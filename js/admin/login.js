@@ -5,6 +5,7 @@ import { logoMark, icon } from '../ui/icons.js';
 import { $ } from '../utils.js';
 
 export default async function login({ root, navigate }) {
+  if (await api.adminSession().catch(() => null)) { navigate('#/admin'); return; } // already signed in as admin
   const mock = api.backend === 'mock';
   root.innerHTML = `<form class="adm-login card card--lime" id="lf" novalidate>
     <div class="adm-login-logo">${logoMark(72)}<h1>FitCircle</h1><p class="muted">لوحة الإدارة</p></div>

@@ -143,6 +143,9 @@ export const adapter = {
   /** Mock mode: no LLM — returns null so coach.js falls back to the rule-based Arabic parser. */
   async invokeCoach() { return null; },
 
+  /** Mock mode: no vision model — nutrition.js falls back to its local food table. */
+  async invokeNutrition() { return null; },
+
   /** Dev helper: wipe local data and reseed. */
   async reset() { localStorage.removeItem(CONFIG.DB_KEY); db = null; load(); },
 };

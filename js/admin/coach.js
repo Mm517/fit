@@ -14,7 +14,8 @@ export default async function coach({ root }) {
     <div class="adm-grid2"><section class="card adm-form"><h3>تعليمات النظام (System Prompt)</h3>
       <p class="muted small">مفتاح مزوّد الذكاء الاصطناعي لا يُحفظ هنا أبداً؛ يبقى داخل Edge Function على الخادم. هذه التعليمات تُرسل إليها مع كل محادثة.</p>
       <textarea id="sp" class="input" rows="7" aria-label="تعليمات النظام">${esc(s.system_prompt)}</textarea>
-      <div class="field"><label for="dl">الحد اليومي للرسائل لكل مستخدم</label><input id="dl" type="number" min="1" max="1000" class="input" value="${s.daily_limit}" style="max-width:200px"></div></section>
+      <div class="field"><label for="dl">الحد اليومي للرسائل لكل مستخدم</label><input id="dl" type="number" min="1" max="1000" class="input" value="${s.daily_limit}" style="max-width:200px"></div>
+      <div class="field"><label for="nl">الحد اليومي لتحليلات التغذية (صور ونصوص) لكل مستخدم</label><input id="nl" type="number" min="1" max="500" class="input" value="${s.nutrition_daily_limit ?? 40}" style="max-width:200px"></div></section>
     <section class="card"><h3 style="margin-bottom:8px">الأدوات وقواعد التأكيد</h3>
       <div class="adm-tablewrap"><table><thead><tr><th scope="col">الأداة</th><th scope="col">مفعّلة</th><th scope="col">تتطلب تأكيداً</th></tr></thead><tbody>
       ${tools.map((t) => `<tr><td><b>${esc(t.label)}</b><br><code>${t.name}</code></td><td>${sw(s.tools[t.name] !== false, `data-tool="${t.name}" aria-label="تفعيل ${esc(t.label)}"`)}</td><td>${sw(s.confirm[t.name] ?? t.confirm, `data-conf="${t.name}" aria-label="تأكيد ${esc(t.label)}"`)}</td></tr>`).join('')}</tbody></table></div></section></div>
@@ -26,7 +27,9 @@ export default async function coach({ root }) {
   $('#save', root).onclick = async () => {
     const lim = parseInt($('#dl', root).value, 10);
     if (!(lim >= 1)) return toast('الحد اليومي غير صحيح', { type: 'error' });
-    s.system_prompt = $('#sp', root).value.trim(); s.daily_limit = lim;
+    const nl = parseInt($('#nl', root).value, 10);
+    if (!(nl >= 1 && nl <= 500)) return toast('حد التغذية غير صحيح', { type: 'error' });
+    s.system_prompt = $('#sp', root).value.trim(); s.daily_limit = lim; s.nutrition_daily_limit = nl;
     await api.saveCoachSettings(s); toast();
   };
 

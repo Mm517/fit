@@ -138,4 +138,19 @@ export const adapter = {
     }
     return data;
   },
+
+  /**
+   * Nutrition AI (Edge Function `nutrition`): { mode:'analyze'|'chat', text|message, image?:{mime,data}, history?, context? }.
+   * Throws an Error whose message is the function's error code (daily_limit, ai_unavailable, bad_image, ...).
+   */
+  async invokeNutrition(payload) {
+    const c = await sb();
+    const { data, error } = await c.functions.invoke(CONFIG.NUTRITION_FUNCTION, { body: payload });
+    if (error) {
+      let code = error.message;
+      try { code = (await error.context?.json?.())?.error || code; } catch { /* keep message */ }
+      throw new Error(code);
+    }
+    return data;
+  },
 };

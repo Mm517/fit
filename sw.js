@@ -1,10 +1,10 @@
 /* FitCircle service worker: app-shell cache + alarm notification actions. */
-const VERSION = 'fc-shell-v3';
+const VERSION = 'fc-shell-v4';
 const SHELL = [
   './', 'index.html', 'manifest.json',
-  'css/app.css', 'css/home.css', 'css/pages.css', 'css/admin.css',
+  'css/app.css', 'css/home.css', 'css/pages.css', 'css/admin.css', 'css/desktop.css',
   'js/main.js', 'js/router.js', 'js/utils.js', 'js/config.js', 'js/alarm.js',
-  'js/data/api.js', 'js/data/mock.js', 'js/data/seed.js', 'js/ui/icons.js', 'js/ui/kit.js', 'js/ui/nav.js', 'js/ui/install.js', 'js/ui/people.js', 'js/ui/stories.js',
+  'js/data/api.js', 'js/data/mock.js', 'js/data/seed.js', 'js/ui/icons.js', 'js/ui/kit.js', 'js/ui/nav.js', 'js/ui/install.js', 'js/ui/people.js', 'js/ui/stories.js', 'js/ui/inbox.js', 'js/ai/nutrition.js', 'js/pages/nutrition.js',
   'js/ai/coach.js', 'js/ai/tools.js', 'js/pages/alarms.js', 'js/pages/coach.js', 'js/pages/community.js', 'js/pages/exercise.js', 'js/pages/home.js', 'js/pages/login.js', 'js/pages/plan.js', 'js/pages/profile.js', 'js/pages/settings.js', 'js/pages/user.js', 'js/pages/messages.js', 'js/pages/chat.js', 'js/pages/wake.js', 'js/pages/workouts.js',
   'assets/icons/icon.svg', 'assets/icons/icon-192.png', 'assets/img/ex-default.svg',
 ];

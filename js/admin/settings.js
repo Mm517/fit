@@ -4,7 +4,7 @@ import { esc, icon, badge, sw, flipSwitch, avatar, pageHead, confirmDlg, $, $$ }
 import { toast } from '../ui/kit.js';
 import { debounce } from '../utils.js';
 
-const FLAGS = [['community', 'المجتمع', 'إظهار تبويب المجتمع والمنشورات'], ['coach', 'المدرب الذكي', 'تفعيل محادثة المدرب'], ['alarms', 'المنبهات', 'تفعيل المنبهات وشاشة الاستيقاظ'], ['signups', 'التسجيل الجديد', 'السماح بإنشاء حسابات جديدة'], ['maintenance', 'وضع الصيانة', 'إيقاف التطبيق مؤقتاً للمستخدمين']];
+const FLAGS = [['community', 'المجتمع', 'إظهار تبويب المجتمع والمنشورات'], ['coach', 'المدرب الذكي', 'تفعيل محادثة المدرب'], ['nutrition', 'التغذية الذكية', 'تحليل الوجبات بالصور والنصوص'], ['alarms', 'المنبهات', 'تفعيل المنبهات وشاشة الاستيقاظ'], ['signups', 'التسجيل الجديد', 'السماح بإنشاء حسابات جديدة'], ['maintenance', 'وضع الصيانة', 'إيقاف التطبيق مؤقتاً للمستخدمين']];
 
 export default async function settings({ root }) {
   const me = await api.adminSession();
@@ -16,7 +16,7 @@ export default async function settings({ root }) {
       <div class="adm-preview" id="pv"><button class="btn btn-primary" type="button">زر أساسي</button><span class="tag tag-lime">وسم</span><span class="lime bold">نص بلون العلامة</span></div>
       <div class="field"><label for="lg">الشعار (صورة)</label><div class="adm-colorrow"><img id="lp" class="avatar" style="border-radius:12px;width:56px;height:56px;${s.logo ? '' : 'display:none'}" src="${esc(s.logo || '')}" alt="الشعار"><input id="lg" type="file" accept="image/*" class="input"></div></div>
       <div class="adm-formfoot"><button class="btn btn-primary" id="save">حفظ</button></div></section>
-    <section class="card"><h3 style="margin-bottom:6px">الخصائص</h3>${FLAGS.map(([k, t, d]) => `<div class="adm-row" style="border-bottom:1px solid var(--line-soft);padding:6px 0"><div><b>${t}</b><br><span class="muted small">${d}</span></div>${sw(s.flags[k], `data-flag="${k}" aria-label="${t}"`)}</div>`).join('')}
+    <section class="card"><h3 style="margin-bottom:6px">الخصائص</h3>${FLAGS.map(([k, t, d]) => `<div class="adm-row" style="border-bottom:1px solid var(--line-soft);padding:6px 0"><div><b>${t}</b><br><span class="muted small">${d}</span></div>${sw(s.flags[k] !== false, `data-flag="${k}" aria-label="${t}"`)}</div>`).join('')}
       <p class="muted small" style="margin-top:10px">تُطبَّق الخصائص عند الحفظ. وضع الصيانة يتطلب تأكيداً.</p></section></div>
     <section class="card"><h3 style="margin-bottom:10px">المديرون</h3><div id="admins"></div>
       <div class="adm-toolbar" style="margin-top:14px"><div class="search-box">${icon('search', { size: 18 })}<input id="uq" class="input" placeholder="ابحث عن مستخدم لترقيته إلى مدير..." aria-label="بحث"></div></div><div id="cands"></div></section>`;

@@ -10,6 +10,7 @@ const KEY = 'fc:prefs';
 const prefs = () => { try { return { workout: true, alarms: true, community: false, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { workout: true, alarms: true, community: false }; } };
 
 export default async function settings({ root, navigate }) {
+  const admin = await api.isAdmin().catch(() => false); // the admin entry exists ONLY for the admin e-mail
   root.innerHTML = `
     <header class="page-head"><a class="icon-btn plain" href="#/profile" aria-label="رجوع">${icon('arrowBack', { size: 24 })}</a><h1>الإعدادات</h1></header>
     <section class="card st-card">
@@ -21,7 +22,7 @@ export default async function settings({ root, navigate }) {
       <button class="st-row" data-s="about"><span class="st-ic">${icon('info')}</span><b>معلومات التطبيق</b><span class="muted small num st-val">v${CONFIG.APP_VERSION}</span></button>
     </section>
     <section class="st-more">
-      <a class="btn btn-outline btn-block" href="#/admin/login">${icon('shield', { size: 20 })} لوحة الإدارة</a>
+      ${admin ? `<a class="btn btn-outline btn-block" href="#/admin">${icon('shield', { size: 20 })} لوحة الإدارة</a>` : ''}
       ${api.backend === 'mock' ? `<button class="btn btn-ghost btn-block" id="st-reset">${icon('refresh', { size: 20 })} إعادة ضبط البيانات التجريبية</button>` : `<button class="btn btn-danger btn-block" id="st-out">${icon('logout', { size: 20 })} تسجيل الخروج</button>`}
     </section>`;
 

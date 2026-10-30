@@ -38,7 +38,7 @@ const lite = (p) => (p ? { id: p.id, name: p.name, avatar: p.avatar || '', goal:
 // =====================================================================================
 // SESSION
 // =====================================================================================
-let _user = null, _admin = null;
+let _user = null, _admin = null, _isAdmin = { id: null, v: false };
 /** Profile of the signed-in app user, or null (supabase mode before login). */
 export async function currentUser(force = false) {
   if (_user && !force) return _user;
@@ -46,27 +46,46 @@ export async function currentUser(force = false) {
   _user = s ? await db.get('profiles', s.user_id) : null;
   return _user;
 }
-export async function userLogin(email, password) { await db.auth.signIn(email, password, 'user'); return currentUser(true); }
+export async function userLogin(email, password) { _isAdmin = { id: null, v: false }; await db.auth.signIn(email, password, 'user'); return currentUser(true); }
 export async function userSignUp(email, password, name) {
   if (!db.auth.signUp) throw new Error('التسجيل غير متاح في الوضع التجريبي');
-  await db.auth.signUp(email, password, name); return currentUser(true);
+  _isAdmin = { id: null, v: false }; await db.auth.signUp(email, password, name); return currentUser(true);
 }
-export async function userLogout() { await db.auth.signOut('user'); _user = null; }
+export async function userLogout() { await db.auth.signOut('user'); _user = null; _admin = null; _isAdmin = { id: null, v: false }; }
 
-/** Returns the admin profile if (and only if) the session user has role === 'admin'. */
+/**
+ * Is this profile an admin? On Supabase the ONLY source of truth is the database function fc_is_admin():
+ * a CONFIRMED e-mail that is listed in fc_admin_emails (so the `role` column and the client are never trusted).
+ * The mock backend keeps using the demo `role` field.
+ */
+async function checkAdmin(p) {
+  if (!p || p.suspended) return false;
+  if (backend !== 'supabase') return p.role === 'admin';
+  try { return (await db.rpc('is_admin')) === true; } catch { return false; }
+}
+/** Cheap, cached check used by the user app to decide whether to show the admin entry. */
+export async function isAdmin() {
+  const u = await currentUser();
+  if (!u) return false;
+  if (_isAdmin.id !== u.id) _isAdmin = { id: u.id, v: await checkAdmin(u) };
+  return _isAdmin.v;
+}
+
+/** Returns the admin profile if (and only if) the session user is an admin. */
 export async function adminSession() {
   const s = await db.auth.session('admin');
   const p = s ? await db.get('profiles', s.user_id) : null;
-  _admin = p && p.role === 'admin' && !p.suspended ? await withEmails(p) : null;
+  _admin = (await checkAdmin(p)) ? await withEmails(p) : null;
   return _admin;
 }
 export async function adminLogin(email, password) {
   await db.auth.signIn(email, password, 'admin');
+  _user = null; _isAdmin = { id: null, v: false };
   const a = await adminSession();
   if (!a) { await db.auth.signOut('admin'); throw new Error('هذا الحساب ليس لديه صلاحية الإدارة'); }
   return a;
 }
-export async function adminLogout() { await db.auth.signOut('admin'); _admin = null; }
+export async function adminLogout() { await db.auth.signOut('admin'); _admin = null; _user = null; _isAdmin = { id: null, v: false }; }
 
 // =====================================================================================
 // PROFILE
@@ -436,6 +455,38 @@ export async function markThreadRead(otherId, thread) {
 export const deleteMessage = (id) => db.remove('messages', id);
 
 // =====================================================================================
+// NUTRITION (private: only the owner can read their meals)
+// =====================================================================================
+const mealNum = (m) => ({ ...m, calories: Math.round(Number(m.calories) || 0), protein: Number(m.protein) || 0, carbs: Number(m.carbs) || 0, fat: Number(m.fat) || 0, items: Array.isArray(m.items) ? m.items : [] });
+export async function listMeals(date = isoDate()) {
+  const me = await currentUser();
+  return (await rows('meals', { where: { user_id: me.id, date }, order: 'created_at' })).map(mealNum);
+}
+/** Totals per day for [from, to] (ISO dates) -> { 'YYYY-MM-DD': { calories, protein, carbs, fat, count } } */
+export async function mealTotals(from, to) {
+  const me = await currentUser();
+  const list = (await rows('meals', { where: { user_id: me.id }, gte: { date: from }, lte: { date: to } })).map(mealNum);
+  const out = {};
+  for (const m of list) { const t = (out[m.date] ||= { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 }); t.calories += m.calories; t.protein += m.protein; t.carbs += m.carbs; t.fat += m.fat; t.count++; }
+  return out;
+}
+export async function addMeal(m) {
+  const me = await currentUser();
+  const title = String(m.title || '').trim().slice(0, 80);
+  if (!title) throw new Error('اكتب اسم الوجبة');
+  const row = {
+    user_id: me.id, date: m.date || isoDate(), meal_type: m.meal_type || 'snack', title,
+    calories: Math.min(5000, Math.max(0, Math.round(+m.calories || 0))), protein: Math.min(300, Math.max(0, +m.protein || 0)),
+    carbs: Math.min(600, Math.max(0, +m.carbs || 0)), fat: Math.min(300, Math.max(0, +m.fat || 0)),
+    items: m.items || [], image: m.image || null, source: m.source === 'ai' ? 'ai' : 'manual', note: m.note ? String(m.note).slice(0, 300) : null,
+  };
+  return mealNum(await db.insert('meals', row));
+}
+export const deleteMeal = (id) => db.remove('meals', id);
+/** Edge Function `nutrition` (vision + chat). Returns null in mock mode -> the local estimator is used. */
+export const invokeNutrition = (payload) => db.invokeNutrition(payload);
+
+// =====================================================================================
 // AI COACH storage (logic lives in /js/ai)
 // =====================================================================================
 /** Admins read the full row; regular users get the safe RPC (no system prompt) under RLS. */
@@ -575,7 +626,7 @@ export async function adminSetRole(id, role) {
 }
 export async function adminDeleteUser(id) {
   const p = await db.get('profiles', id);
-  for (const t of ['user_plans', 'workout_logs', 'alarms', 'posts', 'comments', 'likes', 'saves', 'coach_messages', 'coach_actions', 'push_subscriptions', 'stories']) await db.removeWhere(t, { user_id: id });
+  for (const t of ['user_plans', 'workout_logs', 'alarms', 'posts', 'comments', 'likes', 'saves', 'coach_messages', 'coach_actions', 'push_subscriptions', 'stories', 'meals']) await db.removeWhere(t, { user_id: id });
   await db.removeWhere('reports', { reporter_id: id });
   // social data (the real DB cascades these; the mock needs them removed explicitly)
   await db.removeWhere('story_views', { viewer_id: id }); await db.removeWhere('follows', { follower_id: id }); await db.removeWhere('follows', { followee_id: id });

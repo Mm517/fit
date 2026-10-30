@@ -14,8 +14,10 @@
 import { renderNav } from './ui/nav.js';
 import { $ } from './utils.js';
 import * as api from './data/api.js';
+import { toast } from './ui/kit.js';
 
-/** nav: which bottom-nav tab is highlighted; false hides the nav; full: no padding (full-bleed page) */
+/** nav: which tab is highlighted; false hides the nav everywhere; mobileNav:false hides only the phone bottom bar (the desktop sidebar stays);
+ *  full: no padding (full-bleed page); layout:'msgr-view' = full-height messenger layout */
 const ROUTES = [
   { re: /^\/$/, load: () => import('./pages/home.js'), nav: 'home' },
   { re: /^\/workouts$/, load: () => import('./pages/workouts.js'), nav: 'workouts' },
@@ -26,8 +28,9 @@ const ROUTES = [
   { re: /^\/wake\/([^/]+)$/, keys: ['id'], load: () => import('./pages/wake.js'), nav: false, full: true },
   { re: /^\/community$/, load: () => import('./pages/community.js'), nav: 'community' },
   { re: /^\/user\/([^/]+)$/, keys: ['id'], load: () => import('./pages/user.js'), nav: 'community' },
-  { re: /^\/messages$/, load: () => import('./pages/messages.js'), nav: 'community' },
-  { re: /^\/chat\/([^/]+)$/, keys: ['id'], load: () => import('./pages/chat.js'), nav: false },
+  { re: /^\/nutrition$/, load: () => import('./pages/nutrition.js'), nav: 'nutrition' },
+  { re: /^\/messages$/, load: () => import('./pages/messages.js'), nav: 'messages', layout: 'msgr-view' },
+  { re: /^\/chat\/([^/]+)$/, keys: ['id'], load: () => import('./pages/chat.js'), nav: 'messages', layout: 'msgr-view', mobileNav: false },
   { re: /^\/profile$/, load: () => import('./pages/profile.js'), nav: 'profile' },
   { re: /^\/settings$/, load: () => import('./pages/settings.js'), nav: 'profile' },
   { re: /^\/login$/, load: () => import('./pages/login.js'), nav: false },
@@ -51,7 +54,11 @@ export async function route() {
   // ---------------- admin area ----------------
   if (path === '/admin' || path.startsWith('/admin/')) {
     const rest = path.replace(/^\/admin\/?/, '');
-    if (rest !== 'login' && !(await api.adminSession())) { location.hash = '#/admin/login'; return; } // role guard
+    if (rest !== 'login' && !(await api.adminSession())) { // admin guard: a confirmed admin e-mail only (checked by the database)
+      const signedIn = api.backend === 'supabase' && (await api.currentUser());
+      if (signedIn) toast('هذه الصفحة للمشرفين فقط', { type: 'error' });
+      location.hash = signedIn ? '#/' : '#/admin/login'; return;
+    }
     if (my !== token) return;
     cleanup?.(); cleanup = null;
     document.body.classList.add('is-admin');
@@ -80,8 +87,11 @@ export async function route() {
   const root = document.createElement('div');
   root.className = 'page-enter';
   app.replaceChildren(root);
-  app.className = match.full ? 'fullscreen' : match.nav === false ? 'no-nav' : '';
-  if (match.nav === false) navHost.classList.add('hidden'); else { navHost.classList.remove('hidden'); renderNav(navHost, match.nav); }
+  app.className = match.full ? 'fullscreen' : match.layout || (match.nav === false ? 'no-nav' : '');
+  app.dataset.page = match.nav || 'bare';
+  navHost.classList.toggle('mobile-hidden', match.mobileNav === false);
+  if (match.nav === false) navHost.classList.add('hidden');
+  else { navHost.classList.remove('hidden'); renderNav(navHost, match.nav, { admin: await api.isAdmin().catch(() => false) }); }
   window.scrollTo(0, 0);
 
   try {

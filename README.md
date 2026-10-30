@@ -1,5 +1,7 @@
 # FitCircle (فِت سيركل)
 
+> **v1.2** — desktop layout (sidebar + wide pages), new messenger (list | thread), **Nutrition** (AI meal analysis from photos), admin tied to a single confirmed e-mail in Supabase. Migration: `db/migrations/20261030_03_admin_email_nutrition.sql` (already applied). Edge Function `nutrition` (already deployed).
+
 Arabic RTL, mobile-first PWA — gym community (posts, **stories, follow, direct messages**) + workout tracker + AI coach that acts inside the app — plus a desktop Admin dashboard. Vanilla HTML/CSS/JS (ES modules), no build step.
 
 ## Run
@@ -69,3 +71,10 @@ The function checks the caller's session, suspension, the admin switches and a s
 - Dashboard setting that SQL can't change: **Auth → Passwords → "Leaked password protection"** (HaveIBeenPwned check; Pro plan feature).
 - Supabase's linter still lists `fc_is_admin`, `fc_not_suspended`, `fc_is_blocked` (needed by the RLS policies) and the RPCs the app calls (`fc_ensure_profile`, `fc_block_user`, `fc_coach_public_settings`) as "signed-in users can execute a SECURITY DEFINER function". That is intentional; anonymous access to all of them is revoked.
 - Mock database lives in localStorage (`fc:db:v1`); Settings → "إعادة ضبط البيانات التجريبية" resets it.
+
+## v1.2 additions
+- **Admin = e-mail only.** `fc_is_admin()` is true only for a *confirmed* e-mail listed in `fc_admin_emails` (invisible to every client). The `role` column is no longer trusted. The admin entry (Settings button + sidebar) is shown **only** to that account; other users who open `#/admin` are sent home. Make someone admin (SQL editor):
+  `insert into public.fc_admin_emails(email) values (lower('you@example.com'));`  — remove with `delete from public.fc_admin_emails where email = '...'`.
+- **Nutrition** `#/nutrition`: daily calories/macros vs goal, meal diary (`fc_meals`), 7-day chart, **AI analysis of a meal photo and/or text**, and a nutrition chat that also accepts photos. Images are resized to ≤1024 px in the browser. Edge Function `supabase/functions/nutrition` (same secrets as `coach`; per-user daily limit `nutrition_daily_limit`, default 40, editable in Admin → المدرب الذكي; switch `flags.nutrition` in Admin → الإعدادات). In `?mock` mode text descriptions use a small local food table; photos need the real AI.
+- **Desktop (≥900 px)**: right sidebar navigation, wide pages, 2-column home/nutrition, bottom sheets become centered dialogs. Phones keep the bottom bar.
+- **Messenger**: `ui/inbox.js` (conversation list, search, unread badges) + `pages/chat.js` (day separators, grouped bubbles, pinned auto-growing composer, Enter to send).
