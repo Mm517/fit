@@ -2,7 +2,8 @@
 import * as api from '../data/api.js';
 import { icon } from '../ui/icons.js';
 import { toast, skeleton, emptyState, openSheet, img } from '../ui/kit.js';
-import { esc, $, on } from '../utils.js';
+import { openPeopleList } from '../ui/people.js';
+import { esc, $, on, fmtNum } from '../utils.js';
 
 const TIER = { gold: ['#ffd76a', '#c58a12'], teal: ['#4fe3d0', '#16867a'], silver: ['#dfe7ee', '#7e8f9c'], bronze: ['#ffb066', '#a8581a'] };
 const ICONS = { start: 'flame', regular: 'target', challenger: 'trophy', habit: 'dumbbell' };
@@ -17,11 +18,13 @@ function badge(b, i) {
 export default async function profile({ root }) {
   root.innerHTML = skeleton('card', 4);
   const s = await api.getProfileSummary(); const p = s.profile;
+  const fc = await api.followCounts(p.id).catch(() => ({ followers: 0, following: 0 }));
 
   root.innerHTML = `
     <header class="page-head center"><a class="icon-btn plain" href="#/settings" aria-label="الإعدادات">${icon('gear', { size: 24 })}</a><h1>حسابي</h1><span style="width:44px"></span></header>
     <section class="pf-top"><div class="avatar-ring pf-av">${img(p.avatar, p.name, 'avatar pf-avatar', 'assets/img/av-1.svg')}</div>
       <button class="pf-name" id="pf-edit" aria-label="تعديل الملف الشخصي"><h2>${esc(p.name)}</h2><p class="muted">الهدف: ${esc(p.goal || 'لم يتم تحديده')} ${icon('edit', { size: 14 })}</p></button></section>
+    <div class="up-counts"><button class="up-count" data-list="followers"><b class="num">${fmtNum(fc.followers)}</b><span class="muted small">متابِع</span></button><button class="up-count" data-list="following"><b class="num">${fmtNum(fc.following)}</b><span class="muted small">يتابع</span></button><a class="up-count" href="#/messages">${icon('message', { size: 22 })}<span class="muted small">رسائلي</span></a></div>
     <div class="pf-stats">
       <div class="card stat"><span class="muted small">الوزن الحالي</span><div class="stat-v"><b class="num">${esc(s.stats.weight || '—')}</b><small class="muted">كجم</small></div></div>
       <div class="card stat"><span class="muted small">تمارين هذا الأسبوع</span><div class="stat-v"><b class="num">${s.stats.weekWorkouts}</b></div></div>
@@ -31,6 +34,10 @@ export default async function profile({ root }) {
     <h2 class="h-sec">صوري</h2>
     ${s.photos.length ? `<div class="pf-photos">${s.photos.map((u) => `<div>${img(u, 'صورة', '', 'assets/img/p-1.svg')}</div>`).join('')}</div>` : emptyState({ icon: 'image', title: 'لا توجد صور بعد', text: 'صور منشوراتك ستظهر هنا.' })}`;
 
+  on(root, 'click', '[data-list]', async (e, b) => {
+    const kind = b.dataset.list;
+    try { openPeopleList(kind === 'followers' ? 'المتابِعون' : 'يتابع', await api.listFollowList(p.id, kind), { empty: kind === 'followers' ? 'لا يوجد متابِعون بعد.' : 'لم تتابع أحداً بعد.' }); } catch { toast('تعذّر تحميل القائمة', { type: 'error' }); }
+  });
   on(root, 'click', '#pf-edit', () => openSheet({ title: 'تعديل الملف الشخصي', html: `<div style="display:grid;gap:12px">
       <div class="field"><label for="e-n">الاسم</label><input id="e-n" class="input" maxlength="40" value="${esc(p.name)}"></div>
       <div class="field"><label for="e-g">الهدف</label><input id="e-g" class="input" maxlength="60" value="${esc(p.goal || '')}"></div>

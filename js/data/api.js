@@ -19,6 +19,22 @@ const db = adapter;
 const rows = async (t, o) => (await db.select(t, o)).rows;
 const nowIso = () => new Date().toISOString();
 
+/**
+ * E-mails are NOT part of the public profile row: they live in `profile_private` (readable only by the owner and admins).
+ * Admin screens call this to merge them back into profile rows. Non-admins simply get an empty string.
+ */
+async function withEmails(list) {
+  const arr = (Array.isArray(list) ? list : [list]).filter(Boolean);
+  if (!arr.length) return list;
+  const priv = await rows('profile_private', { where: { id: arr.map((p) => p.id) } });
+  const m = Object.fromEntries(priv.map((r) => [r.id, r.email]));
+  const out = arr.map((p) => ({ ...p, email: m[p.id] || '' }));
+  return Array.isArray(list) ? out : out[0];
+}
+/** Only the profiles that are actually needed (never download the whole table). */
+const profilesByIds = async (ids) => { const u = [...new Set(ids.filter(Boolean))]; return u.length ? rows('profiles', { where: { id: u } }) : []; };
+const lite = (p) => (p ? { id: p.id, name: p.name, avatar: p.avatar || '', goal: p.goal || '', streak: p.streak || 0, suspended: !!p.suspended } : null);
+
 // =====================================================================================
 // SESSION
 // =====================================================================================
@@ -41,7 +57,7 @@ export async function userLogout() { await db.auth.signOut('user'); _user = null
 export async function adminSession() {
   const s = await db.auth.session('admin');
   const p = s ? await db.get('profiles', s.user_id) : null;
-  _admin = p && p.role === 'admin' && !p.suspended ? p : null;
+  _admin = p && p.role === 'admin' && !p.suspended ? await withEmails(p) : null;
   return _admin;
 }
 export async function adminLogin(email, password) {
@@ -194,7 +210,7 @@ export async function nextAlarm() { return computeNextAlarm(await listAlarms());
 async function enrichPosts(posts, me) {
   const ids = posts.map((p) => p.id);
   const [users, likes, saves, comments] = await Promise.all([
-    rows('profiles'), rows('likes', { where: { post_id: ids } }), rows('saves', { where: { user_id: me.id } }), rows('comments', { where: { post_id: ids } }),
+    profilesByIds(posts.map((p) => p.user_id)), rows('likes', { where: { post_id: ids } }), rows('saves', { where: { user_id: me.id } }), rows('comments', { where: { post_id: ids } }),
   ]);
   const uMap = Object.fromEntries(users.map((u) => [u.id, u]));
   return posts.map((p) => ({
@@ -231,7 +247,8 @@ export async function toggleSave(post_id) {
   return !ex;
 }
 export async function listComments(post_id) {
-  const [cs, users] = await Promise.all([rows('comments', { where: { post_id }, order: 'created_at' }), rows('profiles')]);
+  const cs = await rows('comments', { where: { post_id }, order: 'created_at' });
+  const users = await profilesByIds(cs.map((c) => c.user_id));
   const uMap = Object.fromEntries(users.map((u) => [u.id, u]));
   return cs.map((c) => ({ ...c, author: { id: c.user_id, name: uMap[c.user_id]?.name || 'مستخدم', avatar: uMap[c.user_id]?.avatar || '' } }));
 }
@@ -242,11 +259,181 @@ export async function reportPost(post_id, reason = 'محتوى غير لائق')
   if (dup.length) return dup[0];
   return db.insert('reports', { post_id, reporter_id: me.id, reason, status: 'open' });
 }
-/** Top streak users for the stories row. */
-export async function listStories(limit = 8) {
+/** Top streak users ("أعلى المتألقين"). */
+export async function listTopStreaks(limit = 8) {
   const users = (await rows('profiles', { where: { role: 'user', suspended: false }, order: 'streak', desc: true, limit })).filter((u) => u.streak > 0);
   return users.map((u) => ({ id: u.id, name: u.name.split(' ')[0], avatar: u.avatar, streak: u.streak }));
 }
+
+// =====================================================================================
+// SOCIAL: follow · block · people search · public profile
+// =====================================================================================
+export async function searchUsers(q, limit = 20) {
+  const me = await currentUser();
+  const term = (q || '').trim();
+  if (term.length < 2) return [];
+  const [found, myBlocks] = await Promise.all([
+    rows('profiles', { where: { suspended: false }, search: { q: term, fields: ['name'] }, limit: limit + 1 }),
+    rows('blocks', { where: { blocker_id: me.id } }),
+  ]);
+  const blocked = new Set(myBlocks.map((b) => b.blocked_id));
+  return found.filter((u) => u.id !== me.id && !blocked.has(u.id)).slice(0, limit).map(lite);
+}
+export async function followCounts(userId) {
+  const [a, b] = await Promise.all([db.select('follows', { where: { followee_id: userId }, limit: 1 }), db.select('follows', { where: { follower_id: userId }, limit: 1 })]);
+  return { followers: a.count, following: b.count };
+}
+export async function isFollowing(userId) {
+  const me = await currentUser();
+  return (await rows('follows', { where: { follower_id: me.id, followee_id: userId }, limit: 1 })).length > 0;
+}
+/** returns the NEW state (true = now following) */
+export async function toggleFollow(userId) {
+  const me = await currentUser();
+  if (userId === me.id) throw new Error('لا يمكنك متابعة نفسك');
+  const [ex] = await rows('follows', { where: { follower_id: me.id, followee_id: userId }, limit: 1 });
+  if (ex) { await db.remove('follows', ex.id); return false; }
+  await db.insert('follows', { follower_id: me.id, followee_id: userId });
+  return true;
+}
+/** kind: 'followers' | 'following' -> light profiles */
+export async function listFollowList(userId, kind) {
+  const list = await rows('follows', kind === 'followers' ? { where: { followee_id: userId }, order: 'created_at', desc: true, limit: 200 } : { where: { follower_id: userId }, order: 'created_at', desc: true, limit: 200 });
+  const users = await profilesByIds(list.map((f) => (kind === 'followers' ? f.follower_id : f.followee_id)));
+  const m = Object.fromEntries(users.map((u) => [u.id, u]));
+  return list.map((f) => lite(m[kind === 'followers' ? f.follower_id : f.followee_id])).filter((u) => u && !u.suspended);
+}
+export async function isBlockedByMe(userId) {
+  const me = await currentUser();
+  return (await rows('blocks', { where: { blocker_id: me.id, blocked_id: userId }, limit: 1 })).length > 0;
+}
+export async function blockUser(userId) {
+  const me = await currentUser();
+  if (backend === 'supabase') return db.rpc('block_user', { p_target: userId }); // also removes follows both ways (security definer)
+  if (await isBlockedByMe(userId)) return;
+  await db.insert('blocks', { blocker_id: me.id, blocked_id: userId });
+  await db.removeWhere('follows', { follower_id: me.id, followee_id: userId });
+  await db.removeWhere('follows', { follower_id: userId, followee_id: me.id });
+}
+export async function unblockUser(userId) {
+  const me = await currentUser();
+  await db.removeWhere('blocks', { blocker_id: me.id, blocked_id: userId });
+}
+/** Everything the public profile screen needs. Private data (workout logs, e-mail, alarms…) is never part of it. */
+export async function getPublicProfile(userId) {
+  const me = await currentUser();
+  const p = await db.get('profiles', userId);
+  if (!p || (p.suspended && me.role !== 'admin')) return null;
+  const [counts, following, blocked, posts, stories] = await Promise.all([
+    followCounts(userId), isFollowing(userId), isBlockedByMe(userId), listPosts({ userId }), listUserStories(userId),
+  ]);
+  return { profile: lite(p), followers: counts.followers, followingCount: counts.following, following, blocked, posts, stories, since: p.created_at };
+}
+
+// =====================================================================================
+// STORIES (24h, images). Visible to every signed-in user; expiry is enforced by the database.
+// =====================================================================================
+/** Tray for the community screen: me first, then people with unseen stories (followed first), then seen ones. */
+export async function listStoryTray() {
+  const me = await currentUser();
+  const [stories, views, follows] = await Promise.all([
+    rows('stories', { where: { hidden: false }, gte: { expires_at: nowIso() }, order: 'created_at' }),
+    rows('story_views', { where: { viewer_id: me.id } }), rows('follows', { where: { follower_id: me.id } }),
+  ]);
+  const seen = new Set(views.map((v) => v.story_id)), fol = new Set(follows.map((f) => f.followee_id));
+  const users = await profilesByIds([me.id, ...stories.map((s) => s.user_id)]);
+  const uMap = Object.fromEntries(users.map((u) => [u.id, u]));
+  const groups = {};
+  for (const s of stories) { if (uMap[s.user_id] && !uMap[s.user_id].suspended) (groups[s.user_id] ||= []).push({ ...s, seen: seen.has(s.id) || s.user_id === me.id }); }
+  const tray = Object.entries(groups).map(([uid, list]) => ({ user: lite(uMap[uid]), stories: list, unseen: list.some((x) => !x.seen), mine: uid === me.id, following: fol.has(uid) }));
+  const rank = (g) => (g.mine ? 0 : g.unseen && g.following ? 1 : g.unseen ? 2 : 3);
+  const latest = (g) => g.stories[g.stories.length - 1]?.created_at || '';
+  tray.sort((a, b) => rank(a) - rank(b) || (latest(a) < latest(b) ? 1 : -1)); // newest first inside each rank
+  if (!tray.some((g) => g.mine)) tray.unshift({ user: lite(me), stories: [], unseen: false, mine: true, following: false });
+  return tray;
+}
+export async function listUserStories(userId) {
+  const me = await currentUser();
+  const [list, views] = await Promise.all([
+    rows('stories', { where: { user_id: userId, hidden: false }, gte: { expires_at: nowIso() }, order: 'created_at' }),
+    rows('story_views', { where: { viewer_id: me.id } }),
+  ]);
+  const seen = new Set(views.map((v) => v.story_id));
+  return list.map((s) => ({ ...s, seen: seen.has(s.id) || s.user_id === me.id }));
+}
+export async function createStory({ image, caption = '' }) {
+  const me = await currentUser();
+  const row = { user_id: me.id, image, caption: caption.trim() || null };
+  if (backend === 'mock') Object.assign(row, { hidden: false, expires_at: new Date(Date.now() + 24 * 3600000).toISOString() });
+  return db.insert('stories', row); // supabase: expires_at / hidden are server defaults (column grants)
+}
+export async function markStoryViewed(storyId) {
+  const me = await currentUser();
+  const ex = await rows('story_views', { where: { story_id: storyId, viewer_id: me.id }, limit: 1 });
+  if (!ex.length) await db.insert('story_views', { story_id: storyId, viewer_id: me.id }).catch(() => null);
+}
+/** Only the story owner can read this (RLS). */
+export async function storyViewers(storyId) {
+  const v = await rows('story_views', { where: { story_id: storyId }, order: 'created_at', desc: true });
+  const users = await profilesByIds(v.map((x) => x.viewer_id));
+  const m = Object.fromEntries(users.map((u) => [u.id, u]));
+  return v.map((x) => ({ ...lite(m[x.viewer_id]), at: x.created_at })).filter((x) => x.id);
+}
+export async function deleteStory(id) {
+  await db.removeWhere('story_views', { story_id: id }); // no-op on the real DB (cascade); needed by the mock
+  return db.remove('stories', id);
+}
+
+// =====================================================================================
+// DIRECT MESSAGES (1:1). Only the two participants can read them — admins cannot.
+// =====================================================================================
+async function myMessages(limit = 300) {
+  const me = await currentUser();
+  const [sent, recv] = await Promise.all([
+    rows('messages', { where: { sender_id: me.id }, order: 'created_at', desc: true, limit }),
+    rows('messages', { where: { recipient_id: me.id }, order: 'created_at', desc: true, limit }),
+  ]);
+  return { me, sent, recv };
+}
+export async function listInbox() {
+  const { me, sent, recv } = await myMessages();
+  const all = [...sent, ...recv].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const threads = {};
+  for (const m of all) {
+    const other = m.sender_id === me.id ? m.recipient_id : m.sender_id;
+    const t = (threads[other] ||= { other, last: m, unread: 0 });
+    if (m.recipient_id === me.id && !m.read_at) t.unread++;
+  }
+  const users = await profilesByIds(Object.keys(threads));
+  const uMap = Object.fromEntries(users.map((u) => [u.id, u]));
+  return Object.values(threads).map((t) => ({ ...t, user: lite(uMap[t.other]) || { id: t.other, name: 'مستخدم محذوف', avatar: '' }, mine: t.last.sender_id === me.id }));
+}
+export async function unreadMessageCount() {
+  const me = await currentUser();
+  return (await rows('messages', { where: { recipient_id: me.id }, order: 'created_at', desc: true, limit: 300 })).filter((m) => !m.read_at).length;
+}
+export async function listThread(otherId, limit = 200) {
+  const me = await currentUser();
+  const [a, b] = await Promise.all([
+    rows('messages', { where: { sender_id: me.id, recipient_id: otherId }, order: 'created_at', desc: true, limit }),
+    rows('messages', { where: { sender_id: otherId, recipient_id: me.id }, order: 'created_at', desc: true, limit }),
+  ]);
+  return [...a, ...b].sort((x, y) => (x.created_at > y.created_at ? 1 : -1)).slice(-limit);
+}
+export async function sendMessage(otherId, body) {
+  const me = await currentUser();
+  const text = (body || '').trim();
+  if (!text) throw new Error('الرسالة فارغة');
+  if (text.length > 1000) throw new Error('الرسالة طويلة جداً (الحد 1000 حرف)');
+  return db.insert('messages', { sender_id: me.id, recipient_id: otherId, body: text, ...(backend === 'mock' ? { read_at: null } : {}) });
+}
+export async function markThreadRead(otherId, thread) {
+  const me = await currentUser();
+  const unread = thread.filter((m) => m.recipient_id === me.id && m.sender_id === otherId && !m.read_at);
+  for (const m of unread) await db.update('messages', m.id, { read_at: nowIso() });
+  return unread.length;
+}
+export const deleteMessage = (id) => db.remove('messages', id);
 
 // =====================================================================================
 // AI COACH storage (logic lives in /js/ai)
@@ -360,7 +547,13 @@ export async function adminListUsers({ q = '', role = 'all', status = 'all', pag
   const where = {};
   if (role !== 'all') where.role = role;
   if (status !== 'all') where.suspended = status === 'suspended';
-  return db.select('profiles', { where, order: 'created_at', desc: true, limit: pageSize, offset: (page - 1) * pageSize, search: q ? { q, fields: ['name', 'email'] } : null });
+  if (!q) { const r = await db.select('profiles', { where, order: 'created_at', desc: true, limit: pageSize, offset: (page - 1) * pageSize }); return { rows: await withEmails(r.rows), count: r.count }; }
+  // search by name OR e-mail (e-mails live in the private table, so the two matches are merged here)
+  const [byName, mails] = await Promise.all([rows('profiles', { where, search: { q, fields: ['name'] }, order: 'created_at', desc: true }), rows('profile_private', { search: { q, fields: ['email'] }, limit: 200 })]);
+  const byMail = mails.length ? await rows('profiles', { where: { ...where, id: mails.map((m) => m.id) } }) : [];
+  const seen = new Set();
+  const all = [...byName, ...byMail].filter((p) => !seen.has(p.id) && seen.add(p.id)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return { rows: await withEmails(all.slice((page - 1) * pageSize, page * pageSize)), count: all.length };
 }
 export async function adminGetUserDetail(id) {
   const [profile, [plan], logs, alarms, posts, map] = await Promise.all([
@@ -368,7 +561,7 @@ export async function adminGetUserDetail(id) {
     rows('workout_logs', { where: { user_id: id }, order: 'created_at', desc: true, limit: 15 }), rows('alarms', { where: { user_id: id } }),
     rows('posts', { where: { user_id: id } }), exerciseMap(),
   ]);
-  return { profile, plan: plan || null, logs: logs.map((l) => ({ ...l, exercise: map[l.exercise_id] })), alarms, postsCount: posts.length };
+  return { profile: await withEmails(profile), plan: plan || null, logs: logs.map((l) => ({ ...l, exercise: map[l.exercise_id] })), alarms, postsCount: posts.length };
 }
 export async function adminSetSuspended(id, suspended) {
   const p = await db.update('profiles', id, { suspended });
@@ -382,8 +575,12 @@ export async function adminSetRole(id, role) {
 }
 export async function adminDeleteUser(id) {
   const p = await db.get('profiles', id);
-  for (const t of ['user_plans', 'workout_logs', 'alarms', 'posts', 'comments', 'likes', 'saves', 'coach_messages', 'coach_actions', 'push_subscriptions']) await db.removeWhere(t, { user_id: id });
+  for (const t of ['user_plans', 'workout_logs', 'alarms', 'posts', 'comments', 'likes', 'saves', 'coach_messages', 'coach_actions', 'push_subscriptions', 'stories']) await db.removeWhere(t, { user_id: id });
   await db.removeWhere('reports', { reporter_id: id });
+  // social data (the real DB cascades these; the mock needs them removed explicitly)
+  await db.removeWhere('story_views', { viewer_id: id }); await db.removeWhere('follows', { follower_id: id }); await db.removeWhere('follows', { followee_id: id });
+  await db.removeWhere('messages', { sender_id: id }); await db.removeWhere('messages', { recipient_id: id });
+  await db.removeWhere('blocks', { blocker_id: id }); await db.removeWhere('blocks', { blocked_id: id }); await db.removeWhere('profile_private', { id });
   await db.remove('profiles', id);
   await audit('user.delete', id, { name: p?.name });
 }
@@ -435,7 +632,8 @@ export async function adminResolveReport(id, action) {
 
 /** Conversation list grouped by user + one conversation with its tool actions. */
 export async function adminListConversations({ q = '' } = {}) {
-  const [msgs, users] = await Promise.all([rows('coach_messages', { order: 'created_at', desc: true }), rows('profiles')]);
+  const [msgs, users0] = await Promise.all([rows('coach_messages', { order: 'created_at', desc: true }), rows('profiles')]);
+  const users = await withEmails(users0);
   const uMap = Object.fromEntries(users.map((u) => [u.id, u])), g = {};
   for (const m of msgs) { (g[m.user_id] ||= { user: uMap[m.user_id], count: 0, last_at: m.created_at, last_text: m.text }).count++; }
   let list = Object.values(g).filter((x) => x.user);
@@ -478,7 +676,7 @@ export async function adminOverview() {
     },
     series: { days, users: days.map((d) => usersBy[d]), workouts: days.map((d) => logsBy[d]) },
     topExercises: Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, count]) => ({ exercise: map[id], count })).filter((x) => x.exercise),
-    recentSignups: [...users].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 6),
+    recentSignups: await withEmails([...users].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 6)),
     recentReports: reports.slice(0, 5),
   };
 }

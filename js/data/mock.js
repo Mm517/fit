@@ -124,8 +124,8 @@ export const adapter = {
     },
     async signIn(email, password, scope = 'user') {
       // ⚠️ MOCK-ONLY: demo admin credentials from config.js. Real auth is Supabase Auth.
-      const { rows } = await adapter.select('profiles', { where: { email } });
-      const p = rows[0];
+      const { rows: priv } = await adapter.select('profile_private', { where: { email } });
+      const p = priv[0] ? await adapter.get('profiles', priv[0].id) : null;
       const okAdmin = scope === 'admin' && email === CONFIG.MOCK_ADMIN.email && password === CONFIG.MOCK_ADMIN.password;
       const okUser = scope === 'user' && p && p.role !== 'admin';
       if (!p || !(okAdmin || okUser)) throw new Error('بيانات الدخول غير صحيحة');

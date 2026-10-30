@@ -1,6 +1,6 @@
 /**
  * SUPABASE adapter — same interface as mock.js. Activated with CONFIG.ADAPTER = 'supabase'.
- * Table/column names match /db/schema.sql. Row Level Security (see schema.sql) enforces
+ * Table/column names match /db/schema.fc.sql (tables are prefixed fc_). Row Level Security (see schema.sql) enforces
  * who can read/write what, so this file contains no authorization logic.
  *
  * supabase-js is loaded lazily from a pinned CDN build so the mock mode has zero dependencies.
@@ -11,8 +11,19 @@ let client = null;
 async function sb() {
   if (client) return client;
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.45.4');
-  client = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { persistSession: true } });
+  client = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { persistSession: true, storageKey: 'fitcircle-auth' } });
   return client;
+}
+/** The Supabase project is shared with another app, so every FitCircle table/function is prefixed (fc_). */
+const T = (name) => `${CONFIG.TABLE_PREFIX}${name}`;
+
+/** Creates the FitCircle profile row on first sign-in (no auth.users trigger — see db/schema.fc.sql). */
+const ensured = new Set();
+async function ensureProfile(c, userId, name) {
+  if (!userId || ensured.has(userId)) return;
+  const { error } = await c.rpc(T('ensure_profile'), { p_name: name ?? null });
+  if (error) throw new Error(error.message);
+  ensured.add(userId);
 }
 const unwrap = ({ data, error, count }) => { if (error) throw new Error(error.message); return { data, count }; };
 
@@ -21,7 +32,7 @@ export const adapter = {
 
   async select(name, { where = {}, gte = {}, lte = {}, search = null, order = null, desc = false, limit = null, offset = 0 } = {}) {
     const c = await sb();
-    let q = c.from(name).select('*', { count: 'exact' });
+    let q = c.from(T(name)).select('*', { count: 'exact' });
     for (const [k, v] of Object.entries(where)) q = Array.isArray(v) ? q.in(k, v) : v === null ? q.is(k, null) : q.eq(k, v);
     for (const [k, v] of Object.entries(gte)) q = q.gte(k, v);
     for (const [k, v] of Object.entries(lte)) q = q.lte(k, v);
@@ -37,28 +48,28 @@ export const adapter = {
 
   async get(name, id) {
     const c = await sb();
-    return unwrap(await c.from(name).select('*').eq('id', id).maybeSingle()).data;
+    return unwrap(await c.from(T(name)).select('*').eq('id', id).maybeSingle()).data;
   },
   async insert(name, row) {
     const c = await sb();
-    return unwrap(await c.from(name).insert(row).select().single()).data;
+    return unwrap(await c.from(T(name)).insert(row).select().single()).data;
   },
   async update(name, id, patch) {
     const c = await sb();
-    return unwrap(await c.from(name).update(patch).eq('id', id).select().single()).data;
+    return unwrap(await c.from(T(name)).update(patch).eq('id', id).select().single()).data;
   },
   async upsert(name, row) {
     const c = await sb();
-    return unwrap(await c.from(name).upsert(row).select().single()).data;
+    return unwrap(await c.from(T(name)).upsert(row).select().single()).data;
   },
   async remove(name, id) {
     const c = await sb();
-    unwrap(await c.from(name).delete().eq('id', id));
+    unwrap(await c.from(T(name)).delete().eq('id', id));
     return true;
   },
   async removeWhere(name, where) {
     const c = await sb();
-    let q = c.from(name).delete();
+    let q = c.from(T(name)).delete();
     for (const [k, v] of Object.entries(where)) q = Array.isArray(v) ? q.in(k, v) : q.eq(k, v);
     unwrap(await q);
     return true;
@@ -68,18 +79,23 @@ export const adapter = {
     async session() {
       const c = await sb();
       const { data } = await c.auth.getSession();
-      return data.session ? { user_id: data.session.user.id } : null;
+      if (!data.session) return null;
+      await ensureProfile(c, data.session.user.id);
+      return { user_id: data.session.user.id };
     },
     async signIn(email, password) {
       const c = await sb();
       const { data, error } = await c.auth.signInWithPassword({ email, password });
       if (error) throw new Error('بيانات الدخول غير صحيحة');
+      await ensureProfile(c, data.user.id);
       return { user_id: data.user.id };
     },
     async signUp(email, password, name) {
       const c = await sb();
       const { data, error } = await c.auth.signUp({ email, password, options: { data: { name } } });
       if (error) throw new Error(error.message);
+      // With e-mail confirmation ON there is no session yet: the profile is created at the first sign-in.
+      if (data.session) await ensureProfile(c, data.user.id, name);
       return { user_id: data.user?.id };
     },
     async signOut() { const c = await sb(); await c.auth.signOut(); },
@@ -87,16 +103,25 @@ export const adapter = {
 
   async rpc(name, args = {}) {
     const c = await sb();
-    return unwrap(await c.rpc(name, args)).data;
+    return unwrap(await c.rpc(T(name), args)).data;
   },
 
-  /** Uploads to the public 'media' Storage bucket and returns its public URL. */
+  /**
+   * Uploads to the public Storage bucket (CONFIG.MEDIA_BUCKET) inside the user's own folder
+   * (`<user_id>/<uuid>.<ext>` — enforced by the Storage RLS policy) and returns the public URL.
+   */
   async uploadImage(file) {
+    const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!ALLOWED.includes(file.type)) throw new Error('نوع الصورة غير مدعوم (JPG / PNG / WEBP / GIF فقط)');
+    if (file.size > 5 * 1024 * 1024) throw new Error('حجم الصورة أكبر من 5 ميجا');
     const c = await sb();
-    const path = `${crypto.randomUUID()}.${(file.name.split('.').pop() || 'jpg').toLowerCase()}`;
-    const { error } = await c.storage.from('media').upload(path, file, { contentType: file.type });
+    const { data: { session } } = await c.auth.getSession();
+    if (!session) throw new Error('سجّل الدخول الأول');
+    const ext = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' })[file.type];
+    const path = `${session.user.id}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await c.storage.from(CONFIG.MEDIA_BUCKET).upload(path, file, { contentType: file.type, cacheControl: '31536000' });
     if (error) throw new Error(error.message);
-    return c.storage.from('media').getPublicUrl(path).data.publicUrl;
+    return c.storage.from(CONFIG.MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
   },
 
   /**
@@ -106,7 +131,11 @@ export const adapter = {
   async invokeCoach(payload) {
     const c = await sb();
     const { data, error } = await c.functions.invoke(CONFIG.COACH_FUNCTION, { body: payload });
-    if (error) throw new Error(error.message);
+    if (error) {
+      let detail = error.message;
+      try { detail = (await error.context?.json?.())?.error || detail; } catch { /* keep message */ }
+      throw new Error(detail);
+    }
     return data;
   },
 };

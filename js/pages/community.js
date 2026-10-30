@@ -2,19 +2,22 @@
 import * as api from '../data/api.js';
 import { icon } from '../ui/icons.js';
 import { toast, skeleton, emptyState, openSheet, confirmDialog, img } from '../ui/kit.js';
+import { openUserSearch } from '../ui/people.js';
+import { openStoryViewer, openAddStory } from '../ui/stories.js';
 import { esc, $, on, timeAgo } from '../utils.js';
 
 const REASONS = ['محتوى غير لائق', 'سبام أو إعلان', 'معلومات مضللة', 'إساءة أو تنمر'];
 
-export default async function community({ root }) {
+export default async function community({ root, navigate }) {
   root.innerHTML = `<header class="page-head"><h1>المجتمع</h1></header>${skeleton('card', 1)}${skeleton('post', 2)}`;
   const me = await api.currentUser();
-  let posts = [];
+  let posts = [], tray = [], unread = 0;
+  const href = (id) => (id === me.id ? '#/profile' : `#/user/${id}`);
 
   const postHTML = (p) => `
     <article class="card cm-post" data-post="${p.id}">
-      <header class="cm-head">${img(p.author.avatar, p.author.name, 'avatar', 'assets/img/av-1.svg')}
-        <div class="cm-who"><b>${esc(p.author.name)}</b><span class="muted xs">${timeAgo(p.created_at)}</span></div>
+      <header class="cm-head"><a class="cm-author" href="${href(p.author.id)}" aria-label="ملف ${esc(p.author.name)}">${img(p.author.avatar, p.author.name, 'avatar', 'assets/img/av-1.svg')}</a>
+        <div class="cm-who"><a href="${href(p.author.id)}"><b>${esc(p.author.name)}</b></a><span class="muted xs">${timeAgo(p.created_at)}</span></div>
         <button class="icon-btn plain" data-more="${p.id}" aria-label="المزيد">${icon('dots', { size: 20 })}</button></header>
       <p class="cm-body">${esc(p.body)}</p>
       ${p.image ? `<div class="cm-photo">${img(p.image, 'صورة المنشور', '', 'assets/img/p-1.svg')}</div>` : ''}
@@ -25,12 +28,18 @@ export default async function community({ root }) {
       </footer></article>`;
 
   async function load() {
-    const [stories, ps] = await Promise.all([api.listStories(), api.listPosts()]);
-    posts = ps;
+    const [top, ps, tr, un] = await Promise.all([api.listTopStreaks(), api.listPosts(), api.listStoryTray().catch(() => []), api.unreadMessageCount().catch(() => 0)]);
+    posts = ps; tray = tr; unread = un;
     root.innerHTML = `
-      <header class="page-head"><h1>المجتمع</h1></header>
-      <h2 class="h-sec" style="margin-top:0">أعلى المتألقين</h2>
-      <div class="chips cm-stories">${stories.map((s) => `<div class="cm-story"><div class="avatar-ring">${img(s.avatar, s.name, 'avatar cm-sav', 'assets/img/av-1.svg')}</div><span class="cm-badge num">${s.streak} يوم</span><span class="small">${esc(s.name)}</span></div>`).join('')}</div>
+      <header class="page-head"><h1>المجتمع</h1>
+        <button class="icon-btn" data-search aria-label="بحث عن أعضاء">${icon('search', { size: 22 })}</button>
+        <a class="icon-btn cm-msg" href="#/messages" aria-label="الرسائل${unread ? ` (${unread} غير مقروءة)` : ''}">${icon('message', { size: 22 })}${unread ? `<span class="cm-dot num">${unread > 9 ? '9+' : unread}</span>` : ''}</a></header>
+      <div class="chips cm-stories" aria-label="القصص">${tray.map((g, i) => `<div class="cm-story">
+        <button class="cm-story-btn" data-story="${i}" aria-label="${g.mine ? 'قصتي' : `قصة ${esc(g.user.name)}`}"><span class="avatar-ring ${g.stories.length ? (g.unseen ? '' : 'seen') : 'nostory'}">${img(g.user.avatar, g.user.name, 'avatar cm-sav', 'assets/img/av-1.svg')}</span></button>
+        ${g.mine ? `<button class="cm-plus" data-add-story aria-label="إضافة قصة">${icon('plus', { size: 14 })}</button>` : ''}
+        <span class="small cm-sname">${g.mine ? 'قصتي' : esc(g.user.name.split(' ')[0])}</span></div>`).join('')}</div>
+      <h2 class="h-sec">أعلى المتألقين</h2>
+      <div class="chips cm-stories">${top.map((s) => `<a class="cm-story" href="${href(s.id)}"><span class="avatar-ring">${img(s.avatar, s.name, 'avatar cm-sav', 'assets/img/av-1.svg')}</span><span class="cm-badge num">${s.streak} يوم</span><span class="small">${esc(s.name)}</span></a>`).join('')}</div>
       <button class="card cm-composer" id="cm-new"><span class="muted">ابدأ بوست...</span><span class="cm-img-ic">${icon('image', { size: 22 })}</span></button>
       <div id="cm-list">${posts.length ? posts.map(postHTML).join('') : emptyState({ icon: 'users', title: 'لا توجد منشورات بعد', text: 'كن أول من يشارك تقدمه!', action: 'ابدأ بوست', actionId: 'new' })}</div>`;
   }
@@ -39,6 +48,13 @@ export default async function community({ root }) {
   const redraw = (p) => { const el = root.querySelector(`[data-post="${p.id}"]`); if (el) el.outerHTML = postHTML(p); };
 
   on(root, 'click', '#cm-new, [data-act=new]', () => composer());
+  on(root, 'click', '[data-search]', () => openUserSearch());
+  on(root, 'click', '[data-add-story]', () => openAddStory({ onDone: load }));
+  on(root, 'click', '[data-story]', (e, b) => {
+    const g = tray[+b.dataset.story];
+    if (!g.stories.length) return g.mine ? openAddStory({ onDone: load }) : null;
+    openStoryViewer({ groups: tray, startUserId: g.user.id, meId: me.id, navigate, onClose: load });
+  });
   on(root, 'click', '[data-like]', async (e, b) => { const p = find(b.dataset.like); p.liked = !p.liked; p.likes += p.liked ? 1 : -1; redraw(p); try { await api.toggleLike(p.id); } catch { toast('تعذّر الحفظ', { type: 'error' }); } });
   on(root, 'click', '[data-save]', async (e, b) => { const p = find(b.dataset.save); p.saved = !p.saved; redraw(p); try { await api.toggleSave(p.id); if (p.saved) toast('تم حفظ المنشور'); } catch { toast('تعذّر الحفظ', { type: 'error' }); } });
   on(root, 'click', '[data-cmt]', (e, b) => comments(find(b.dataset.cmt)));
@@ -58,7 +74,7 @@ export default async function community({ root }) {
 
   async function comments(p) {
     const cs = await api.listComments(p.id);
-    const row = (c) => `<div class="cm-cmt">${img(c.author.avatar, '', 'avatar cm-cav', 'assets/img/av-1.svg')}<div><b class="small">${esc(c.author.name)}</b><p>${esc(c.body)}</p></div></div>`;
+    const row = (c) => `<div class="cm-cmt"><a href="${href(c.author.id)}" data-person>${img(c.author.avatar, '', 'avatar cm-cav', 'assets/img/av-1.svg')}</a><div><a href="${href(c.author.id)}" data-person><b class="small">${esc(c.author.name)}</b></a><p>${esc(c.body)}</p></div></div>`;
     openSheet({ title: 'التعليقات', html: `<div class="cm-cmts" id="cl">${cs.length ? cs.map(row).join('') : '<p class="muted" style="text-align:center;padding:16px">لا توجد تعليقات بعد.</p>'}</div>
       <form class="co-form" id="cf"><input class="input" id="ci" placeholder="اكتب تعليقاً..." maxlength="300" autocomplete="off"><button class="co-send" aria-label="إرسال">${icon('send', { size: 22, cls: 'rtl-flip' })}</button></form>`,
       onMount: (el) => $('#cf', el).addEventListener('submit', async (e) => {

@@ -52,19 +52,37 @@ export function buildSeed() {
 
   // ---------- profiles ----------
   db.profiles = [
-    { id: 'u1', name: 'محمد أحمد', email: 'mohamed@example.com', avatar: 'assets/img/av-1.svg', goal: 'جسم أقوى وصحة أفضل', role: 'user', suspended: false, weight: 72, streak: 7, last_workout: dateOnly(now), created_at: iso(now - 60 * DAY), last_active: iso(now - 600000) },
-    { id: 'admin1', name: 'مدير النظام', email: 'admin@fitcircle.app', avatar: 'assets/img/av-5.svg', goal: '', role: 'admin', suspended: false, weight: 0, streak: 0, last_workout: null, created_at: iso(now - 120 * DAY), last_active: iso(now - 3600000) },
+    { id: 'u1', name: 'محمد أحمد', avatar: 'assets/img/av-1.svg', goal: 'جسم أقوى وصحة أفضل', role: 'user', suspended: false, weight: 72, streak: 7, last_workout: dateOnly(now), created_at: iso(now - 60 * DAY), last_active: iso(now - 600000) },
+    { id: 'admin1', name: 'مدير النظام', avatar: 'assets/img/av-5.svg', goal: '', role: 'admin', suspended: false, weight: 0, streak: 0, last_workout: null, created_at: iso(now - 120 * DAY), last_active: iso(now - 3600000) },
   ];
   for (let i = 0; i < 38; i++) {
     const nm = `${pick(FIRST)} ${pick(LAST)}`;
     const created = now - Math.floor(R() * 30 * DAY) - (i < 4 ? 0 : 0);
     db.profiles.push({
-      id: `u${i + 2}`, name: nm, email: `user${i + 2}@example.com`, avatar: `assets/img/av-${(i % 8) + 1}.svg`,
+      id: `u${i + 2}`, name: nm, avatar: `assets/img/av-${(i % 8) + 1}.svg`,
       goal: pick(GOALS), role: 'user', suspended: i === 11 || i === 27, weight: 55 + Math.floor(R() * 40),
       streak: Math.floor(R() * 30), last_workout: dateOnly(now - Math.floor(R() * 5) * DAY),
       created_at: iso(i < 5 ? now - i * 3600000 * 2 : created), last_active: iso(now - Math.floor(R() * 4 * DAY)),
     });
   }
+
+  // e-mails are private: they live in their own table (owner/admin only on the real backend)
+  db.profile_private = db.profiles.map((p) => ({ id: p.id, email: p.id === 'u1' ? 'mohamed@example.com' : p.id === 'admin1' ? 'admin@fitcircle.app' : `user${p.id.slice(1)}@example.com` }));
+
+  // ---------- social: follows · stories · messages · blocks ----------
+  db.follows = []; db.blocks = []; db.story_views = []; db.messages = [];
+  const fol = (a, b, h = 24) => db.follows.push({ id: `fw-${db.follows.length + 1}`, follower_id: a, followee_id: b, created_at: iso(now - h * 3600000) });
+  ['u2', 'u3', 'u5', 'u6'].forEach((u, i) => fol('u1', u, 50 + i));
+  ['u2', 'u3', 'u4', 'u7', 'u8'].forEach((u, i) => fol(u, 'u1', 30 + i));
+  for (let u = 3; u < 14; u++) fol(`u${u}`, `u${2 + (u % 5)}`, u);
+  db.stories = ['u2', 'u3', 'u5', 'u6', 'u9'].map((user_id, i) => ({
+    id: `st-${i + 1}`, user_id, image: `assets/img/p-${(i % 4) + 1}.svg`, caption: ['يوم رجل 🔥', 'صباح الخير يا أبطال', '', 'رقم جديد!', 'استمروا 💪'][i], hidden: false,
+    created_at: iso(now - (i + 1) * 2 * 3600000), expires_at: iso(now + (22 - i * 2) * 3600000),
+  }));
+  db.messages = [
+    ['u3', 'u1', 'ازيك يا بطل! عايز أسألك عن جدول الصدر', 180, false], ['u1', 'u3', 'أهلاً! تمام، اسأل', 170, true], ['u3', 'u1', 'بتعمل كام ست في البنش؟', 160, false],
+    ['u2', 'u1', 'تمرين الصبح بكرة؟ 💪', 60, false],
+  ].map(([sender_id, recipient_id, body, mins, read], i) => ({ id: `ms-${i + 1}`, sender_id, recipient_id, body, read_at: read || i === 0 ? iso(now - (mins - 5) * 60000) : null, created_at: iso(now - mins * 60000) }));
 
   // ---------- plan templates (used by the AI coach) ----------
   const day = (label, muscles, ids) => ({ label, muscles, exercise_ids: ids });

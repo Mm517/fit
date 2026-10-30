@@ -154,7 +154,9 @@ export async function sendToCoach(message) {
   let plan;
   try {
     const remote = await api.invokeCoachFunction({ message, history: (await api.coachHistory(12)).map((m) => ({ role: m.role, text: m.text })) });
-    plan = remote ? { text: remote.text, calls: remote.tool_calls || [], suggestions: remote.suggestions } : await parseArabic(message);
+    if (!remote) plan = await parseArabic(message);
+    else if (remote.tool_calls?.[0]?.name === 'undo_last') plan = { undo: true, suggestions: remote.suggestions };
+    else plan = { text: remote.text, calls: remote.tool_calls || [], suggestions: remote.suggestions };
   } catch (e) {
     console.warn('[coach] remote failed, using local parser', e);
     plan = await parseArabic(message);
