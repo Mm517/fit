@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
+<defs><radialGradient id="g" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#1fb6a6" stop-opacity=".42"/><stop offset=".55" stop-color="#0b141a"/><stop offset="1" stop-color="#04080b"/></radialGradient>
+<linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1318" stop-opacity="0"/><stop offset="1" stop-color="#03070a" stop-opacity=".95"/></linearGradient>
+<filter id="b"><feGaussianBlur stdDeviation="5"/></filter></defs>
+<rect width="400" height="300" fill="url(#g)"/>
+<g filter="url(#b)"><circle cx="135" cy="10" r="10" fill="#1fb6a6" opacity="0.16"/><circle cx="349" cy="34" r="21" fill="#1fb6a6" opacity="0.15"/><circle cx="32" cy="124" r="24" fill="#1fb6a6" opacity="0.14"/><circle cx="247" cy="131" r="15" fill="#1fb6a6" opacity="0.08"/><circle cx="67" cy="68" r="10" fill="#1fb6a6" opacity="0.18"/><circle cx="230" cy="0" r="17" fill="#1fb6a6" opacity="0.10"/><circle cx="300" cy="141" r="18" fill="#1fb6a6" opacity="0.18"/><circle cx="175" cy="96" r="24" fill="#1fb6a6" opacity="0.15"/><circle cx="119" cy="115" r="21" fill="#1fb6a6" opacity="0.15"/><circle cx="75" cy="50" r="7" fill="#1fb6a6" opacity="0.12"/><circle cx="368" cy="89" r="7" fill="#1fb6a6" opacity="0.14"/><circle cx="84" cy="95" r="12" fill="#1fb6a6" opacity="0.17"/><circle cx="160" cy="114" r="6" fill="#1fb6a6" opacity="0.13"/><circle cx="326" cy="147" r="11" fill="#1fb6a6" opacity="0.14"/></g>
+<rect y="262" width="400" height="38" fill="#091015"/><rect y="258" width="400" height="4" fill="#1fb6a6" opacity=".18"/>
+<g stroke-linecap="round"><rect x="40" y="150" width="320" height="8" rx="4" fill="#9aa7b0"/>
+<rect x="70" y="112" width="16" height="84" rx="5" fill="#222d35"/><rect x="92" y="122" width="12" height="64" rx="4" fill="#2c3a44"/>
+<rect x="314" y="112" width="16" height="84" rx="5" fill="#222d35"/><rect x="296" y="122" width="12" height="64" rx="4" fill="#2c3a44"/>
+<rect x="150" y="146" width="100" height="16" rx="4" fill="#6c7a84" opacity=".5"/>
+<path d="M120 230 L120 285 M280 230 L280 285" stroke="#1d2830" stroke-width="10"/><rect x="100" y="215" width="200" height="16" rx="6" fill="#1a242b"/></g>
+<rect width="400" height="300" fill="url(#f)"/></svg>

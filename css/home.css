@@ -1,0 +1,56 @@
+/* Home page (screenshot 02) */
+.home-hero { position: absolute; inset: 0 0 auto 0; height: 250px; pointer-events: none; z-index: 0; opacity: .55;
+  background: url('../assets/img/hero-gym.svg') right top / 85% auto no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 100%), linear-gradient(to left, #000 40%, transparent 100%); -webkit-mask-composite: source-in; mask-composite: intersect; }
+#view > * { position: relative; z-index: 1; }
+#view > .home-hero { position: absolute; }
+.home-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.home-hi { font-size: 26px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.hi-badge { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(var(--lime-rgb), .15); border: 1px solid rgba(var(--lime-rgb), .5); color: var(--lime); }
+.streak { display: flex; align-items: center; gap: 6px; align-self: flex-start; }
+.streak b { display: block; font-size: 44px; line-height: 1; font-weight: 800; }
+.streak small { display: block; color: var(--mut); font-size: 13px; }
+.streak-flame { color: var(--orange); filter: drop-shadow(0 0 12px rgba(255, 138, 31, .6)); }
+.hh-top { padding-top: 6px; }
+
+.home-today { margin-bottom: 14px; padding: 14px; }
+.ht-row { display: flex; gap: 14px; align-items: stretch; margin-bottom: 14px; }
+.ht-body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+.ht-body h2 { font-size: 22px; font-weight: 800; line-height: 1.25; }
+.ht-meta { display: flex; gap: 14px; color: var(--mut); font-size: 13.5px; margin-top: 2px; flex-wrap: wrap; }
+.ht-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.ht-photo { width: 128px; min-height: 112px; border-radius: 18px; overflow: hidden; flex: none; border: 1px solid var(--line-soft); }
+.ht-photo img { width: 100%; height: 100%; object-fit: cover; }
+.home-today.rest .ht-body { margin-bottom: 14px; }
+
+.home-week { margin-bottom: 14px; padding: 16px 14px 14px; }
+.hw-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.hw-title h3 { font-size: 19px; font-weight: 800; }
+.hw-go { position: absolute; top: 12px; inset-inline-start: 10px; width: 36px; height: 36px; color: var(--blue); }
+.hw-days { display: flex; justify-content: space-between; gap: 4px; }
+.hw-day { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; font-size: 11.5px; color: var(--mut); }
+.hw-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid #243541; }
+.hw-dot.done { background: var(--lime); border-color: var(--lime); color: var(--lime-ink); box-shadow: 0 0 14px rgba(var(--lime-rgb), .5); }
+.hw-dot.today { border-color: transparent; color: var(--lime); }
+.hw-dot.rest { border-style: dashed; opacity: .6; }
+.hw-day.is-today .hw-lbl { color: var(--lime); font-weight: 700; }
+
+.home-alarm { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.ha-txt { display: flex; flex-direction: column; gap: 2px; }
+.ha-time { font-size: 30px; line-height: 1.1; font-weight: 800; } .ha-time span:last-child { font-size: 20px; margin-inline-start: 4px; }
+.ha-days { color: var(--blue); font-size: 13.5px; display: flex; align-items: center; gap: 5px; }
+.ha-ic { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; color: var(--orange); border: 1.5px solid rgba(255, 138, 31, .7); background: rgba(255, 138, 31, .08); box-shadow: 0 0 18px rgba(255, 138, 31, .22); }
+
+.home-sec { font-size: 18px; }
+.stats3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat { padding: 12px 12px 10px; display: flex; flex-direction: column; gap: 4px; min-height: 126px; border-radius: 18px; }
+.stat-v { display: flex; align-items: baseline; gap: 4px; margin-top: 4px; }
+.stat-v b { font-size: 28px; font-weight: 800; line-height: 1.1; }
+.stat-ic { margin-top: auto; color: var(--blue); }
+.stat:nth-child(3) .stat-ic { color: var(--orange); }
+
+.home-ask { margin-top: 16px; padding: 12px 14px 14px; }
+.ask-row { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
+.ask-row .input { flex: 1; }
+.ask-send { width: 48px; height: 48px; flex: none; border-radius: 14px; background: rgba(var(--lime-rgb), .12); color: var(--lime); border: 1px solid rgba(var(--lime-rgb), .5); display: grid; place-items: center; transition: transform .12s; }
+.ask-send:active { transform: scale(.94); }
