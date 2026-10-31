@@ -173,7 +173,7 @@ textarea.input { min-height: 92px; resize: vertical; }
 @media (min-width: 520px) { #nav { bottom: 18px; width: 480px; } }
 #nav.hidden { display: none; }
 .nav-bar {
-  pointer-events: auto; position: relative; display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; height: var(--nav-h); padding: 0 6px calc(env(safe-area-inset-bottom) + 8px);
+  pointer-events: auto; position: relative; display: grid; grid-template-columns: repeat(6, 1fr); align-items: end; height: var(--nav-h); padding: 0 6px calc(env(safe-area-inset-bottom) + 8px);
   background: linear-gradient(180deg, rgba(8, 16, 21, .94), rgba(6, 12, 16, .98)); backdrop-filter: blur(14px); border-top: 1px solid var(--line);
 }
 @media (min-width: 520px) { .nav-bar { border-radius: 0 0 34px 34px; } }

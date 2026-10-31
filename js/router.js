@@ -29,6 +29,7 @@ const ROUTES = [
   { re: /^\/wake\/([^/]+)$/, keys: ['id'], load: () => import('./pages/wake.js'), nav: false, full: true },
   { re: /^\/community$/, load: () => import('./pages/community.js'), nav: 'community' },
   { re: /^\/user\/([^/]+)$/, keys: ['id'], load: () => import('./pages/user.js'), nav: 'community' },
+  { re: /^\/reels$/, load: () => import('./pages/reels.js'), nav: 'reels' },
   { re: /^\/nutrition$/, load: () => import('./pages/nutrition.js'), nav: 'nutrition' },
   { re: /^\/messages$/, load: () => import('./pages/messages.js'), nav: 'messages', layout: 'msgr-view' },
   { re: /^\/chat\/([^/]+)$/, keys: ['id'], load: () => import('./pages/chat.js'), nav: 'messages', layout: 'msgr-view', mobileNav: false },

@@ -244,3 +244,4 @@ button.avatar-ring:disabled { cursor: default; }
 .rl-av { width: 40px; height: 40px; border: 2px solid var(--lime); }
 .rl-cap { font-size: 15px; line-height: 1.6; text-shadow: 0 1px 8px #000; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 @media (min-width: 900px) { .rl-item { max-width: 480px; margin-inline: auto; } .rl { background: rgba(0, 0, 0, .96); } }
+.rl-by { margin-inline-start: auto; opacity: .85; font-weight: 600; }

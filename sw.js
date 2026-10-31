@@ -15,7 +15,7 @@ const SHELL = [
   'js/data/api.js', 'js/data/mock.js', 'js/data/seed.js', 'js/data/supabase.js',
   'js/ui/icons.js', 'js/ui/kit.js', 'js/ui/nav.js', 'js/ui/net.js', 'js/ui/install.js', 'js/ui/people.js', 'js/ui/stories.js', 'js/ui/reels.js', 'js/ui/composer.js', 'js/ui/mediaUpload.js', 'js/ui/inbox.js',
   'js/ai/coach.js', 'js/ai/tools.js', 'js/ai/nutrition.js',
-  'js/pages/alarms.js', 'js/pages/chat.js', 'js/pages/coach.js', 'js/pages/community.js', 'js/pages/exercise.js', 'js/pages/home.js', 'js/pages/login.js', 'js/pages/messages.js', 'js/pages/nutrition.js', 'js/pages/plan.js', 'js/pages/profile.js', 'js/pages/settings.js', 'js/pages/user.js', 'js/pages/wake.js', 'js/pages/workouts.js',
+  'js/pages/alarms.js', 'js/pages/chat.js', 'js/pages/coach.js', 'js/pages/community.js', 'js/pages/exercise.js', 'js/pages/home.js', 'js/pages/login.js', 'js/pages/messages.js', 'js/pages/nutrition.js', 'js/pages/plan.js', 'js/pages/profile.js', 'js/pages/reels.js', 'js/pages/settings.js', 'js/pages/user.js', 'js/pages/wake.js', 'js/pages/workouts.js',
   'assets/icons/icon.svg', 'assets/icons/icon-192.png', 'assets/img/ex-default.svg',
 ];
 

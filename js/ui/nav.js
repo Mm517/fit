@@ -10,6 +10,7 @@ const BAR = [
   { key: 'home', href: '#/', label: 'الرئيسية', ic: 'home' },
   { key: 'workouts', href: '#/workouts', label: 'التمارين', ic: 'dumbbell' },
   { key: 'coach', href: '#/coach', label: 'المدرب', ic: 'spark' },
+  { key: 'reels', href: '#/reels', label: 'ريلز', ic: 'reel' },
   { key: 'community', href: '#/community', label: 'المجتمع', ic: 'users' },
   { key: 'profile', href: '#/profile', label: 'حسابي', ic: 'user' },
 ];
@@ -18,6 +19,7 @@ const SIDE = [
   { key: 'workouts', href: '#/workouts', label: 'التمارين', ic: 'dumbbell' },
   { key: 'nutrition', href: '#/nutrition', label: 'التغذية', ic: 'apple' },
   { key: 'coach', href: '#/coach', label: 'المدرب الذكي', ic: 'spark' },
+  { key: 'reels', href: '#/reels', label: 'ريلز', ic: 'reel' },
   { key: 'community', href: '#/community', label: 'المجتمع', ic: 'users' },
   { key: 'messages', href: '#/messages', label: 'الرسائل', ic: 'message', badge: true },
   { key: 'profile', href: '#/profile', label: 'حسابي', ic: 'user' },
