@@ -1,5 +1,5 @@
 /* FitCircle service worker: app-shell cache + alarm notification actions. */
-const VERSION = 'fc-shell-v4';
+const VERSION = 'fc-shell-v5';
 const SHELL = [
   './', 'index.html', 'manifest.json',
   'css/app.css', 'css/home.css', 'css/pages.css', 'css/admin.css', 'css/desktop.css',
