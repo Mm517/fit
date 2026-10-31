@@ -4,6 +4,7 @@ import { icon } from '../ui/icons.js';
 import { toast, skeleton, emptyState, openSheet, confirmDialog, img } from '../ui/kit.js';
 import { openPeopleList } from '../ui/people.js';
 import { openStoryViewer } from '../ui/stories.js';
+import { openReelViewer } from '../ui/reels.js';
 import { esc, $, on, timeAgo, fmtNum } from '../utils.js';
 
 const head = (title = '') => `<header class="page-head center"><button class="icon-btn plain" data-back aria-label="رجوع">${icon('arrow', { size: 24, cls: 'rtl-flip' })}</button><h1>${esc(title)}</h1><span style="width:44px"></span></header>`;
@@ -19,6 +20,8 @@ export default async function userPage({ root, params, navigate }) {
   if (!d) { root.innerHTML = head('الملف الشخصي') + emptyState({ icon: 'user', title: 'المستخدم غير موجود', text: 'ربما تم حذف الحساب أو تعليقه.' }); return; }
   const p = d.profile;
   let busy = false;
+  let reels = [];
+  try { reels = await api.listReels({ userId: p.id }); } catch (e) { console.warn('[reels]', e); }
 
   function draw() {
     const hasStory = d.stories.length > 0 && !d.blocked, unseen = d.stories.some((s) => !s.seen);
@@ -39,6 +42,7 @@ export default async function userPage({ root, params, navigate }) {
         <a class="btn btn-outline" href="#/chat/${esc(p.id)}">${icon('message', { size: 18 })} رسالة</a>
         <button class="icon-btn" data-more aria-label="المزيد">${icon('dots', { size: 22 })}</button>
       </div>
+      ${reels.length ? `<h2 class="h-sec">الريلز</h2><div class="pf-grid">${reels.map((r, i) => `<button class="pf-tile pf-rtile" data-reel="${i}" aria-label="ريل">${img(r.poster, 'ريل', '', 'assets/img/ex-default.svg')}<span class="pf-rmeta">${icon('play', { size: 16 })}<span class="num">${fmtNum(r.likes)}</span></span></button>`).join('')}</div>` : ''}
       <h2 class="h-sec">المنشورات</h2>
       ${d.posts.length ? d.posts.map(postHTML).join('') : emptyState({ icon: 'image', title: 'لا توجد منشورات بعد', text: 'لم ينشر شيئاً حتى الآن.' })}`}`;
   }
@@ -58,6 +62,7 @@ export default async function userPage({ root, params, navigate }) {
     const kind = b.dataset.list;
     try { openPeopleList(kind === 'followers' ? 'المتابِعون' : 'يتابع', await api.listFollowList(p.id, kind), { empty: kind === 'followers' ? 'لا يوجد متابِعون بعد.' : 'لا يتابع أحداً بعد.' }); } catch { toast('تعذّر تحميل القائمة', { type: 'error' }); }
   });
+  on(root, 'click', '[data-reel]', (e, b) => openReelViewer({ reels, startIndex: +b.dataset.reel, meId: me.id, navigate }));
   on(root, 'click', '[data-story]', () => openStoryViewer({
     groups: [{ user: p, stories: d.stories, mine: false }], startUserId: p.id, meId: me.id, navigate,
     onClose: () => draw(),

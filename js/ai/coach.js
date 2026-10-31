@@ -13,6 +13,7 @@
 import * as api from '../data/api.js';
 import { runTool, undoLast } from './tools.js';
 import { toLatinDigits, DAYS_AR } from '../utils.js';
+import { isOnline, isNetworkError } from '../ui/net.js';
 
 export const DEFAULT_SUGGESTIONS = ['اعملي جدول 6 أيام', 'صحّيني 6 الصبح', 'بدّل تمرين الصدر', 'سجّل تمريني'];
 export const WELCOME = 'أهلاً! أنا مدربك الذكي. أقدر أعملك جدول، أضبط منبه، أسجّل تمرينك أو أبدّل تمارين. قولي تحب نبدأ بإيه؟';
@@ -137,7 +138,25 @@ async function parseArabic(raw) {
   if (/(شكرا|تسلم|ميرسي)/.test(t)) return { text: 'العفو! أنا هنا في أي وقت. كمّل بقوة.', suggestions: DEFAULT_SUGGESTIONS };
   if (/(مرحبا|اهلا|السلام|هاي|صباح|مساء الخير)/.test(t)) return { text: 'أهلاً بيك يا بطل! تحب نعمل إيه النهارده؟', suggestions: DEFAULT_SUGGESTIONS };
   if (/(مساعده|تقدر|بتعمل ايه|ايه اللي)/.test(t)) return { text: 'أقدر: أعملك جدول أسبوعي، أضبط منبه، أبدّل تمرين، أسجّل تمرينك، وأنشر بوست في المجتمع. وكل حاجة تقدر تتراجع عنها.', suggestions: DEFAULT_SUGGESTIONS };
-  return { text: 'ما فهمتش قصدك تمام. جرّب واحدة من دول:', suggestions: DEFAULT_SUGGESTIONS };
+  return { text: 'ما فهمتش قصدك تمام. جرّب واحدة من دول:', suggestions: DEFAULT_SUGGESTIONS, unknown: true };
+}
+
+
+// ---------------------------------------------------------------- remote errors -> a clear Arabic message
+const COACH_ERRORS = {
+  coach_disabled: 'المدرب الذكي متوقف مؤقتاً من الإدارة. تقدر تستخدم الأوامر البسيطة زي «صحّيني 6 الصبح» أو «اعملي جدول 4 أيام».',
+  daily_limit: 'وصلت للحد اليومي من رسائل المدرب. نكمل بكرة بإذن الله.',
+  unauthorized: 'الجلسة انتهت. سجّل دخولك من جديد وجرّب تاني.',
+  suspended: 'حسابك معلّق.',
+  ai_unavailable: 'خدمة الذكاء الاصطناعي مش متاحة دلوقتي. جرّب بعد شوية.',
+  no_ai_key_configured: 'مفتاح الذكاء الاصطناعي لسه ما اتضبطش على السيرفر (OPENROUTER_API_KEY أو GEMINI_API_KEY).',
+};
+export function coachErrorText(e) {
+  if (!isOnline()) return 'مفيش اتصال بالإنترنت. المدرب محتاج نت، جرّب تاني لما الاتصال يرجع.';
+  const code = String(e?.message || '');
+  if (COACH_ERRORS[code]) return COACH_ERRORS[code];
+  if (isNetworkError(e) || /Edge Function|send a request/i.test(code)) return 'تعذّر الاتصال بالمدرب. اتأكد من النت وجرّب تاني.';
+  return 'حصلت مشكلة مؤقتة مع المدرب. جرّب تاني.';
 }
 
 // ---------------------------------------------------------------- public entry point
@@ -151,15 +170,19 @@ export async function sendToCoach(message) {
   }
   const user = await api.coachAppend({ role: 'user', text: message });
 
-  let plan;
+  let plan, remoteErr = null;
   try {
+    if (api.backend === 'supabase' && !isOnline()) throw new Error('offline');
     const remote = await api.invokeCoachFunction({ message, history: (await api.coachHistory(12)).map((m) => ({ role: m.role, text: m.text })) });
     if (!remote) plan = await parseArabic(message);
     else if (remote.tool_calls?.[0]?.name === 'undo_last') plan = { undo: true, suggestions: remote.suggestions };
     else plan = { text: remote.text, calls: remote.tool_calls || [], suggestions: remote.suggestions };
   } catch (e) {
     console.warn('[coach] remote failed, using local parser', e);
+    remoteErr = e;
     plan = await parseArabic(message);
+    // the simple rule-based commands still work; anything it can't understand gets the REAL reason instead of "ما فهمتش"
+    if (plan.unknown) plan = { text: coachErrorText(e), suggestions: DEFAULT_SUGGESTIONS };
   }
 
   let text = plan.text, card = null, suggestions = plan.suggestions || [];

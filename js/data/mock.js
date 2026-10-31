@@ -6,7 +6,7 @@
  *   get(table, id) / insert(table, row) / update(table, id, patch) / upsert(table, row)
  *   remove(table, id) / removeWhere(table, where)
  *   auth.session(scope) / auth.signIn(email, password, scope) / auth.signOut(scope)
- *   uploadImage(file) -> url
+ *   uploadImage(file, { kind }) -> url   (always WebP)   ·   uploadVideo(file, { kind, onProgress }) -> { video, poster, … }   ·   removeMedia(urls)
  *   invokeCoach(payload) -> LLM reply | null
  *
  * select() options:
@@ -19,7 +19,8 @@
  */
 import { CONFIG } from '../config.js';
 import { buildSeed } from './seed.js';
-import { uid, fileToDataURL } from '../utils.js';
+import { uid } from '../utils.js';
+import { toWebP } from '../media.js';
 
 let db = null;
 const SESSION_KEYS = { user: 'fc:session:user', admin: 'fc:session:admin' };
@@ -138,7 +139,13 @@ export const adapter = {
   async rpc() { return null; },
 
   /** In mock mode images are kept as small data URLs. Supabase adapter uploads to Storage. */
-  async uploadImage(file) { return fileToDataURL(file); },
+  /** Mock: convert to WebP like the real backend, keep it as a data URL in localStorage (small preset). */
+  async uploadImage(file, { kind = 'post' } = {}) {
+    const small = await toWebP(file, { maxSide: kind === 'avatar' ? 256 : 640, quality: 0.7 });
+    return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(small); });
+  },
+  async uploadVideo() { throw new Error('رفع الفيديو بيشتغل على الحساب الحقيقي (سوبابيس) فقط، مش في الوضع التجريبي.'); },
+  async removeMedia() { /* nothing stored remotely in mock mode */ },
 
   /** Mock mode: no LLM — returns null so coach.js falls back to the rule-based Arabic parser. */
   async invokeCoach() { return null; },

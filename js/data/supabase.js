@@ -6,6 +6,8 @@
  * supabase-js is loaded lazily from a pinned CDN build so the mock mode has zero dependencies.
  */
 import { CONFIG } from '../config.js';
+import { toWebP, compressVideo, videoPoster } from '../media.js';
+import { requireOnline } from '../ui/net.js';
 
 let client = null;
 async function sb() {
@@ -26,6 +28,22 @@ async function ensureProfile(c, userId, name) {
   ensured.add(userId);
 }
 const unwrap = ({ data, error, count }) => { if (error) throw new Error(error.message); return { data, count }; };
+
+
+/** Upload one File (already converted) to `<user id>/<uuid>.<ext>` and return its public URL. */
+const EXT = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'video/webm': 'webm', 'video/mp4': 'mp4' };
+async function putFile(file) {
+  const c = await sb();
+  const { data: { session } } = await c.auth.getSession();
+  if (!session) throw new Error('سجّل الدخول الأول');
+  const type = String(file.type).split(';')[0];
+  const ext = EXT[type];
+  if (!ext) throw new Error('نوع الملف غير مدعوم');
+  const path = `${session.user.id}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await c.storage.from(CONFIG.MEDIA_BUCKET).upload(path, file, { contentType: type, cacheControl: '31536000' });
+  if (error) throw new Error(/exceeded|too large|size/i.test(error.message) ? 'الملف أكبر من الحد المسموح' : error.message);
+  return c.storage.from(CONFIG.MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
+}
 
 export const adapter = {
   name: 'supabase',
@@ -109,19 +127,41 @@ export const adapter = {
   /**
    * Uploads to the public Storage bucket (CONFIG.MEDIA_BUCKET) inside the user's own folder
    * (`<user_id>/<uuid>.<ext>` — enforced by the Storage RLS policy) and returns the public URL.
+   * EVERY image is converted to WebP (and resized) in the browser first. kind: 'avatar' | 'post' | 'story' | 'meal'.
    */
-  async uploadImage(file) {
-    const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!ALLOWED.includes(file.type)) throw new Error('نوع الصورة غير مدعوم (JPG / PNG / WEBP / GIF فقط)');
-    if (file.size > 5 * 1024 * 1024) throw new Error('حجم الصورة أكبر من 5 ميجا');
-    const c = await sb();
-    const { data: { session } } = await c.auth.getSession();
-    if (!session) throw new Error('سجّل الدخول الأول');
-    const ext = ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' })[file.type];
-    const path = `${session.user.id}/${crypto.randomUUID()}.${ext}`;
-    const { error } = await c.storage.from(CONFIG.MEDIA_BUCKET).upload(path, file, { contentType: file.type, cacheControl: '31536000' });
-    if (error) throw new Error(error.message);
-    return c.storage.from(CONFIG.MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
+  async uploadImage(file, { kind = 'post' } = {}) {
+    requireOnline('رفع الصور');
+    if (!/^image\//.test(file.type || '')) throw new Error('اختر ملف صورة');
+    const webp = await toWebP(file, kind);
+    if (webp.size > 5 * 1024 * 1024) throw new Error('حجم الصورة أكبر من 5 ميجا');
+    return putFile(webp);
+  },
+
+  /**
+   * Compress a video in the browser (WebM/MP4, 540–720p, ~1 Mbps) + make a WebP poster, then upload both.
+   * kind: 'reel' (<= 60 s) | 'story' (<= 30 s). onProgress({ phase:'compress'|'upload', value:0..1 }).
+   * Returns { video, poster, duration, bytes, originalBytes }.
+   */
+  async uploadVideo(file, { kind = 'reel', onProgress, signal } = {}) {
+    requireOnline('رفع الفيديو');
+    const small = await compressVideo(file, { preset: kind, signal, onProgress: (v) => onProgress?.({ phase: 'compress', value: v }) });
+    if (small.file.size > 24 * 1024 * 1024) throw new Error('الفيديو لسه كبير بعد الضغط. جرّب مقطع أقصر.');
+    onProgress?.({ phase: 'upload', value: 0 });
+    const posterFile = await videoPoster(small.file).catch(() => videoPoster(file));
+    const [video, poster] = await Promise.all([putFile(small.file), putFile(posterFile)]);
+    onProgress?.({ phase: 'upload', value: 1 });
+    return { video, poster, duration: small.duration, bytes: small.file.size, originalBytes: file.size };
+  },
+
+  /** Best-effort cleanup of files we uploaded (own folder only; failures are ignored). */
+  async removeMedia(urls = []) {
+    try {
+      const prefix = `/storage/v1/object/public/${CONFIG.MEDIA_BUCKET}/`;
+      const paths = urls.filter(Boolean).map((u) => { const i = String(u).indexOf(prefix); return i < 0 ? null : decodeURIComponent(String(u).slice(i + prefix.length).split('?')[0]); }).filter(Boolean);
+      if (!paths.length) return;
+      const c = await sb();
+      await c.storage.from(CONFIG.MEDIA_BUCKET).remove(paths);
+    } catch (e) { console.warn('[media cleanup]', e); }
   },
 
   /**

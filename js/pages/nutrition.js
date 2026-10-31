@@ -42,7 +42,7 @@ export default async function nutrition({ root, query }) {
           <p class="muted small">صوّر طبقك أو ارفع صورة، وأنا أقدّر المكونات والسعرات والبروتين. تقدر كمان تكتب وصف الوجبة.</p>
           <div class="nu-drop" id="nu-drop">
             <input type="file" id="nu-file" accept="image/*" hidden>
-            <button class="nu-pick" id="nu-pick" type="button">${icon('camera', { size: 30 })}<b>صوّر أو اختر صورة</b><span class="muted xs">JPG · PNG · WEBP</span></button>
+            <button class="nu-pick" id="nu-pick" type="button">${icon('camera', { size: 30 })}<b>صوّر أو اختر صورة</b><span class="muted xs">أي صورة · بتتحوّل WebP</span></button>
             <div class="nu-prev" id="nu-prev" hidden></div>
           </div>
           <div class="co-form nu-form"><input class="input" id="nu-text" maxlength="300" placeholder="أو اكتب: ٢ رغيف عيش وفول وبيضتين" autocomplete="off"><button class="btn btn-primary" id="nu-go" type="button">${icon('spark', { size: 18 })} حلّل</button></div>
@@ -204,7 +204,7 @@ export default async function nutrition({ root, query }) {
   $('#nu-go', root).addEventListener('click', runAnalyze);
   $('#nu-text', root).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runAnalyze(); } });
 
-  function dataUrlToFile(url, name = 'meal.jpg') {
+  function dataUrlToFile(url, name = 'meal.webp') {
     const [head, b64] = url.split(','); const mime = /data:([^;]+)/.exec(head)?.[1] || 'image/jpeg';
     const bin = atob(b64), arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new File([arr], name, { type: mime });
@@ -219,7 +219,7 @@ export default async function nutrition({ root, query }) {
       items: m.items || [], source: result.provider === 'local' ? 'manual' : 'ai', note: m.note || '',
     };
     try {
-      if (result.preview) { try { body.image = await api.uploadImage(dataUrlToFile(result.preview)); } catch (er) { console.warn('[meal image]', er); toast('اتحفظت الوجبة بدون الصورة', { type: 'error' }); } }
+      if (result.preview) { try { body.image = await api.uploadImage(dataUrlToFile(result.preview), { kind: 'meal' }); } catch (er) { console.warn('[meal image]', er); toast('اتحفظت الوجبة بدون الصورة', { type: 'error' }); } }
       await api.addMeal(body);
       result = null; renderResult(); clearPhoto(); $('#nu-text', root).value = '';
       await loadDay(); toast('تمت إضافة الوجبة');

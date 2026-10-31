@@ -4,6 +4,7 @@ import { icon } from '../ui/icons.js';
 import { toast, skeleton, emptyState, openSheet, confirmDialog, img } from '../ui/kit.js';
 import { openUserSearch } from '../ui/people.js';
 import { openStoryViewer, openAddStory } from '../ui/stories.js';
+import { openPostComposer } from '../ui/composer.js';
 import { esc, $, on, timeAgo } from '../utils.js';
 
 const REASONS = ['محتوى غير لائق', 'سبام أو إعلان', 'معلومات مضللة', 'إساءة أو تنمر'];
@@ -47,7 +48,7 @@ export default async function community({ root, navigate }) {
   const find = (id) => posts.find((p) => p.id === id);
   const redraw = (p) => { const el = root.querySelector(`[data-post="${p.id}"]`); if (el) el.outerHTML = postHTML(p); };
 
-  on(root, 'click', '#cm-new, [data-act=new]', () => composer());
+  on(root, 'click', '#cm-new, [data-act=new]', () => openPostComposer({ onDone: async () => { await load(); } }));
   on(root, 'click', '[data-search]', () => openUserSearch());
   on(root, 'click', '[data-add-story]', () => openAddStory({ onDone: load }));
   on(root, 'click', '[data-story]', (e, b) => {
@@ -82,25 +83,5 @@ export default async function community({ root, navigate }) {
         await api.addComment(p.id, v); $('#ci', el).value = '';
         const list = await api.listComments(p.id); $('#cl', el).innerHTML = list.map(row).join(''); p.comments = list.length; redraw(p);
       }) });
-  }
-
-  function composer() {
-    let image = null;
-    openSheet({ title: 'منشور جديد', html: `<div class="field"><textarea class="input" id="pb" maxlength="500" placeholder="شارك تقدمك مع المجتمع..."></textarea></div>
-      <div id="pv" class="cm-preview" hidden></div>
-      <div class="row" style="display:flex;gap:10px;margin-top:12px"><label class="btn btn-outline" style="flex:1" for="pf">${icon('image', { size: 20 })} صورة</label><input id="pf" type="file" accept="image/*" hidden>
-      <button class="btn btn-primary" id="pub" style="flex:2">نشر</button></div>`,
-      onMount: (el, close) => {
-        const pv = $('#pv', el);
-        $('#pf', el).addEventListener('change', async (e) => {
-          const f = e.target.files[0]; if (!f) return;
-          try { image = await api.uploadImage(f); pv.hidden = false; pv.innerHTML = `<img src="${esc(image)}" alt="معاينة"><button class="icon-btn cm-rm" id="rm" aria-label="إزالة الصورة">${icon('x', { size: 18 })}</button>`; } catch { toast('تعذّر رفع الصورة', { type: 'error' }); }
-        });
-        pv.addEventListener('click', (e) => { if (e.target.closest('#rm')) { image = null; pv.hidden = true; pv.innerHTML = ''; } });
-        $('#pub', el).onclick = async () => {
-          const body = $('#pb', el).value.trim(); if (!body && !image) return toast('اكتب شيئاً أولاً', { type: 'error' });
-          await api.createPost({ body, image }); close(); await load(); toast('تم نشر المنشور');
-        };
-      } });
   }
 }

@@ -3,6 +3,7 @@ import * as api from './data/api.js';
 import { startRouter, navigate } from './router.js';
 import { startAlarmEngine } from './alarm.js';
 import { toast } from './ui/kit.js';
+import { startNetWatch } from './ui/net.js';
 
 /** Brand color + app name come from admin "Settings" (app_settings.app). */
 async function applyBrand() {
@@ -30,6 +31,7 @@ async function pollBroadcasts() {
 }
 
 async function boot() {
+  startNetWatch(); // banner when the connection drops
   await applyBrand();
   if ('serviceWorker' in navigator) {
     // sw.js lives at the project root so its scope covers the whole app

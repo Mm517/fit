@@ -15,6 +15,7 @@ import { renderNav } from './ui/nav.js';
 import { $ } from './utils.js';
 import * as api from './data/api.js';
 import { toast } from './ui/kit.js';
+import { isOnline, isNetworkError, offlineState } from './ui/net.js';
 
 /** nav: which tab is highlighted; false hides the nav everywhere; mobileNav:false hides only the phone bottom bar (the desktop sidebar stays);
  *  full: no padding (full-bleed page); layout:'msgr-view' = full-height messenger layout */
@@ -72,7 +73,17 @@ export async function route() {
   document.title = 'FitCircle — فِت سيركل';
 
   // ---------------- user app ----------------
-  const user = await api.currentUser();
+  let user;
+  try { user = await api.currentUser(); }
+  catch (e) { // can't even reach the auth service (offline / blocked): show a clear notice instead of a blank screen
+    console.warn('[router] session check failed', e);
+    app.innerHTML = offlineState(isOnline() ? { title: 'تعذّر الاتصال بالسيرفر', text: 'اتأكد من النت وجرّب تاني.' } : undefined);
+    navHost.classList.add('hidden');
+    const again = () => { window.removeEventListener('online', again); route(); };
+    window.addEventListener('online', again, { once: true });
+    app.querySelector('[data-net-retry]')?.addEventListener('click', () => { if (!isOnline()) toast('لسه مفيش اتصال بالإنترنت', { type: 'error' }); else route(); });
+    return;
+  }
   if (!user && path !== '/login') { location.hash = '#/login'; return; }
   if (user?.suspended) { app.innerHTML = '<div class="empty" style="padding-top:30vh"><h3>تم تعليق حسابك</h3><p>تواصل مع الدعم لمزيد من المعلومات.</p></div>'; navHost.classList.add('hidden'); return; }
 
@@ -100,10 +111,36 @@ export async function route() {
     const c = await mod.default({ params, query, root, navigate });
     if (my !== token) { c?.(); return; }
     cleanup = typeof c === 'function' ? c : null;
+    sessionStorage.removeItem('fc:chunk-reload');
   } catch (err) {
     console.error('[router]', err);
-    root.innerHTML = `<div class="empty"><h3>حدث خطأ غير متوقع</h3><p>${String(err.message || err)}</p><a class="btn btn-primary" href="#/">العودة للرئيسية</a></div>`;
+    if (my !== token) return;
+    const chunkFail = /dynamically imported module|importing a module script failed|module script/i.test(String(err?.message || ''));
+    if (!isOnline()) { // no connection: say so, and retry automatically when it comes back
+      root.innerHTML = offlineState();
+      const retry = () => { window.removeEventListener('online', retry); route(); };
+      window.addEventListener('online', retry, { once: true });
+    } else if (chunkFail) { // online but the page file could not be loaded = old cached app / new deploy. Refresh once automatically.
+      if (!sessionStorage.getItem('fc:chunk-reload')) { sessionStorage.setItem('fc:chunk-reload', '1'); await hardRefresh(); return; }
+      root.innerHTML = `<div class="empty"><h3>في تحديث جديد للتطبيق</h3><p>لازم نحدّث التطبيق عشان الصفحة دي تفتح.</p><button class="btn btn-primary" data-hard-refresh>تحديث التطبيق</button></div>`;
+    } else if (isNetworkError(err)) {
+      root.innerHTML = offlineState({ title: 'تعذّر الاتصال بالسيرفر', text: 'اتأكد من النت وجرّب تاني.' });
+    } else {
+      root.innerHTML = `<div class="empty"><h3>حدث خطأ غير متوقع</h3><p>${String(err.message || err).replace(/[<>&]/g, '')}</p><a class="btn btn-primary" href="#/">العودة للرئيسية</a></div>`;
+    }
+    root.querySelector('[data-net-retry]')?.addEventListener('click', () => { if (!isOnline()) toast('لسه مفيش اتصال بالإنترنت', { type: 'error' }); else route(); });
+    root.querySelector('[data-hard-refresh]')?.addEventListener('click', hardRefresh);
   }
+}
+
+/** Drop the service worker + its caches, then reload (fixes a stale cached app after a new deployment). */
+export async function hardRefresh() {
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
+    await Promise.all(regs.map((r) => r.unregister()));
+    if (window.caches) await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+  } catch (e) { console.warn('[refresh]', e); }
+  location.reload();
 }
 
 export function startRouter() {

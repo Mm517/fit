@@ -96,7 +96,11 @@ export async function updateProfile(patch) {
   return _user;
 }
 export const getProfile = (id) => db.get('profiles', id);
-export async function uploadImage(file) { return db.uploadImage(file); }
+/** Any image -> WebP -> public URL. kind: 'avatar' | 'post' | 'story' | 'meal'. */
+export async function uploadImage(file, opts) { return db.uploadImage(file, opts); }
+/** Video -> compressed WebM/MP4 + WebP poster -> { video, poster, duration, bytes, originalBytes }. kind: 'reel' | 'story'. */
+export async function uploadVideo(file, opts) { return db.uploadVideo(file, opts); }
+export const removeMedia = (urls) => db.removeMedia(urls);
 
 // =====================================================================================
 // EXERCISES
@@ -380,9 +384,9 @@ export async function listUserStories(userId) {
   const seen = new Set(views.map((v) => v.story_id));
   return list.map((s) => ({ ...s, seen: seen.has(s.id) || s.user_id === me.id }));
 }
-export async function createStory({ image, caption = '' }) {
+export async function createStory({ image, video = null, caption = '' }) {
   const me = await currentUser();
-  const row = { user_id: me.id, image, caption: caption.trim() || null };
+  const row = { user_id: me.id, image, caption: caption.trim() || null, ...(video ? { video } : {}) };
   if (backend === 'mock') Object.assign(row, { hidden: false, expires_at: new Date(Date.now() + 24 * 3600000).toISOString() });
   return db.insert('stories', row); // supabase: expires_at / hidden are server defaults (column grants)
 }
@@ -399,8 +403,47 @@ export async function storyViewers(storyId) {
   return v.map((x) => ({ ...lite(m[x.viewer_id]), at: x.created_at })).filter((x) => x.id);
 }
 export async function deleteStory(id) {
+  const st = await db.get('stories', id).catch(() => null);
   await db.removeWhere('story_views', { story_id: id }); // no-op on the real DB (cascade); needed by the mock
-  return db.remove('stories', id);
+  const r = await db.remove('stories', id);
+  if (st) removeMedia([st.image, st.video]);
+  return r;
+}
+
+// =====================================================================================
+// REELS (short videos, compressed in the browser before upload)
+// =====================================================================================
+/** opts: { userId } to filter by author. Newest first, with like counts + author. */
+export async function listReels({ userId, limit = 60 } = {}) {
+  const me = await currentUser();
+  const list = await rows('reels', { where: { hidden: false, ...(userId ? { user_id: userId } : {}) }, order: 'created_at', desc: true, limit });
+  if (!list.length) return [];
+  const ids = list.map((r) => r.id);
+  const [users, likes] = await Promise.all([profilesByIds([...new Set(list.map((r) => r.user_id))]), rows('reel_likes', { where: { reel_id: ids } })]);
+  const uMap = Object.fromEntries(users.map((u) => [u.id, u]));
+  return list.filter((r) => !uMap[r.user_id]?.suspended || r.user_id === me.id).map((r) => ({
+    ...r,
+    author: { id: r.user_id, name: uMap[r.user_id]?.name || 'مستخدم محذوف', avatar: uMap[r.user_id]?.avatar || '' },
+    likes: likes.filter((l) => l.reel_id === r.id).length,
+    liked: likes.some((l) => l.reel_id === r.id && l.user_id === me.id),
+    mine: r.user_id === me.id,
+  }));
+}
+export async function createReel({ video, poster = null, caption = '' }) {
+  const me = await currentUser();
+  return db.insert('reels', { user_id: me.id, video, poster, caption: caption.trim() || null, ...(backend === 'mock' ? { hidden: false } : {}) });
+}
+export async function deleteReel(id) {
+  const r = await db.get('reels', id).catch(() => null);
+  await db.removeWhere('reel_likes', { reel_id: id });
+  await db.remove('reels', id);
+  if (r) removeMedia([r.video, r.poster]);
+}
+export async function toggleReelLike(reel_id) {
+  const me = await currentUser();
+  const [ex] = await rows('reel_likes', { where: { reel_id, user_id: me.id } });
+  if (ex) { await db.remove('reel_likes', ex.id); return false; }
+  await db.insert('reel_likes', { reel_id, user_id: me.id }); return true;
 }
 
 // =====================================================================================
@@ -556,7 +599,7 @@ export async function getProfileSummary(userId) {
     { id: 'challenger', name: 'محب التحدي', earned: logs.length >= 25, tier: 'silver' },
     { id: 'habit', name: 'حافظ على العادة', earned: (me.streak || 0) >= 7, tier: 'bronze' },
   ];
-  return { profile: me, stats: { weight: me.weight, streak: me.streak || 0, weekWorkouts: weekDays, totalLogs: logs.length }, badges, photos: myPosts.filter((p) => p.image).map((p) => p.image) };
+  return { profile: me, stats: { weight: me.weight, streak: me.streak || 0, weekWorkouts: weekDays, totalLogs: logs.length }, badges, photos: myPosts.filter((p) => p.image).map((p) => p.image), posts: myPosts };
 }
 
 /** Mock-mode "inbox": admin broadcasts created after `sinceIso` that target this user. */
@@ -626,7 +669,7 @@ export async function adminSetRole(id, role) {
 }
 export async function adminDeleteUser(id) {
   const p = await db.get('profiles', id);
-  for (const t of ['user_plans', 'workout_logs', 'alarms', 'posts', 'comments', 'likes', 'saves', 'coach_messages', 'coach_actions', 'push_subscriptions', 'stories', 'meals']) await db.removeWhere(t, { user_id: id });
+  for (const t of ['user_plans', 'workout_logs', 'alarms', 'posts', 'comments', 'likes', 'saves', 'coach_messages', 'coach_actions', 'push_subscriptions', 'stories', 'meals', 'reels', 'reel_likes']) await db.removeWhere(t, { user_id: id });
   await db.removeWhere('reports', { reporter_id: id });
   // social data (the real DB cascades these; the mock needs them removed explicitly)
   await db.removeWhere('story_views', { viewer_id: id }); await db.removeWhere('follows', { follower_id: id }); await db.removeWhere('follows', { followee_id: id });

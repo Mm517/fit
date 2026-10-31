@@ -14,8 +14,7 @@ export default async function login({ root, navigate }) {
         <div class="field"><label for="lg-p">كلمة المرور</label><input id="lg-p" class="input" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="6" dir="ltr" required></div>
         ${err ? `<p class="lg-err" role="alert">${esc(err)}</p>` : ''}
         <button class="btn btn-primary btn-block">${signup ? 'إنشاء حساب' : 'تسجيل الدخول'}</button>
-        <button type="button" class="btn btn-ghost btn-block" id="lg-sw">${signup ? 'لدي حساب بالفعل' : 'ليس لدي حساب؟ سجّل الآن'}</button></form>
-      <p class="muted" style="margin-top:14px;font-size:13px;text-align:center"><a href="/privacy" style="color:inherit">سياسة الخصوصية</a> · <a href="/terms" style="color:inherit">شروط الخدمة</a></p></div>`;
+        <button type="button" class="btn btn-ghost btn-block" id="lg-sw">${signup ? 'لدي حساب بالفعل' : 'ليس لدي حساب؟ سجّل الآن'}</button></form></div>`;
     $('#lg-sw', root).onclick = () => { signup = !signup; draw(); };
     $('#lg', root).onsubmit = async (e) => {
       e.preventDefault();

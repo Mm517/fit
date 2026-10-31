@@ -9,7 +9,9 @@
  * table of common (Egyptian) foods; photos need the real AI.
  */
 import * as api from '../data/api.js';
-import { fileToDataURL, toLatinDigits } from '../utils.js';
+import { toLatinDigits } from '../utils.js';
+import { toWebP } from '../media.js';
+import { isOnline, isNetworkError } from '../ui/net.js';
 
 export const MEAL_TYPES = { breakfast: 'فطار', lunch: 'غداء', dinner: 'عشاء', snack: 'سناك' };
 export function guessMealType(d = new Date()) {
@@ -31,13 +33,14 @@ export function goalsFor(user = {}) {
 }
 
 // ------------------------------------------------------------------------------------------ images
-/** Resize (max 1024 px, JPEG) and return the payload the Edge Function expects. */
+/** Resize (max 1024 px) + convert to WebP (JPEG on old Safari) and return the payload the Edge Function expects. */
 export async function imageToPayload(file) {
   if (!/^image\//.test(file.type || '')) throw new Error('اختر ملف صورة');
-  const url = await fileToDataURL(file, 1024, 0.8); // data:image/jpeg;base64,....
-  const data = url.split(',')[1] || '';
+  const small = await toWebP(file, { maxSide: 1024, quality: 0.8 });
+  const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(small); });
+  const data = String(url).split(',')[1] || '';
   if (!data) throw new Error('تعذّر قراءة الصورة');
-  return { mime: 'image/jpeg', data, preview: url };
+  return { mime: small.type, data, preview: url };
 }
 
 const ERRORS = {
@@ -49,7 +52,8 @@ const ERRORS = {
   ai_unavailable: 'خدمة الذكاء الاصطناعي مش متاحة دلوقتي. جرّب بعد شوية.',
   no_ai_key_configured: 'مفتاح الذكاء الاصطناعي لسه ما اتضبطش على السيرفر.',
 };
-const friendly = (e) => new Error(ERRORS[e?.message] || 'حصلت مشكلة في الاتصال. جرّب تاني.');
+const OFFLINE = 'مفيش اتصال بالإنترنت. التغذية محتاجة نت، جرّب تاني لما الاتصال يرجع.';
+const friendly = (e) => new Error(!isOnline() ? OFFLINE : ERRORS[e?.message] || (isNetworkError(e) || /Edge Function|send a request/i.test(e?.message || '') ? 'تعذّر الاتصال بالسيرفر. اتأكد من النت وجرّب تاني.' : 'حصلت مشكلة مؤقتة. جرّب تاني.'));
 
 // ------------------------------------------------------------------------------------------ local estimator (text only)
 // [name, regex, grams per serving, kcal/100g, protein, carbs, fat]   (rough averages)
@@ -104,6 +108,7 @@ export async function analyzeMeal({ text = '', file = null } = {}) {
   text = text.trim();
   if (!text && !file) throw new Error('صوّر الوجبة أو اكتب وصفها');
   const image = file ? await imageToPayload(file) : null;
+  if (api.backend === 'supabase' && !isOnline()) throw new Error(OFFLINE);
   let remote = null;
   try { remote = await api.invokeNutrition({ mode: 'analyze', text, image: image ? { mime: image.mime, data: image.data } : undefined }); }
   catch (e) {
@@ -122,6 +127,7 @@ export async function askNutrition({ message = '', file = null, history = [], co
   message = message.trim();
   if (!message && !file) throw new Error('اكتب سؤالك');
   const image = file ? await imageToPayload(file) : null;
+  if (api.backend === 'supabase' && !isOnline()) throw new Error(OFFLINE);
   let r = null;
   try { r = await api.invokeNutrition({ mode: 'chat', message, history, context, image: image ? { mime: image.mime, data: image.data } : undefined }); }
   catch (e) { throw friendly(e); }

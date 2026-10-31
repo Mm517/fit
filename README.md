@@ -1,5 +1,7 @@
 # FitCircle (فِت سيركل)
 
+> **v1.3** — Reels + video stories + profile creation (post / reel / story). Every image is converted to **WebP** and every video is compressed in the browser (WebM/MP4, 540–720p, ~1 Mbps, reel ≤ 60 s, story ≤ 30 s) before upload (`js/media.js`). Offline banner + clear errors (`js/ui/net.js`). New service worker (network-first for code, fixes "Failed to fetch dynamically imported module"). Migration: `db/migrations/20261031_04_reels_video.sql` (already applied; it also turns **maintenance off** and **nutrition on** — a ON maintenance flag made the `coach` and `nutrition` functions return 403).
+
 > **v1.2** — desktop layout (sidebar + wide pages), new messenger (list | thread), **Nutrition** (AI meal analysis from photos), admin tied to a single confirmed e-mail in Supabase. Migration: `db/migrations/20261030_03_admin_email_nutrition.sql` (already applied). Edge Function `nutrition` (already deployed).
 
 Arabic RTL, mobile-first PWA — gym community (posts, **stories, follow, direct messages**) + workout tracker + AI coach that acts inside the app — plus a desktop Admin dashboard. Vanilla HTML/CSS/JS (ES modules), no build step.
